@@ -1,0 +1,21 @@
+{
+  "name": "colres",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "format": "biome check . --write",
+    "typecheck": "turbo run check-types"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.4",
+    "prettier": "^3.7.4",
+    "turbo": "^2.8.10",
+    "typescript": "5.9.2"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=18"
+  }
+}
