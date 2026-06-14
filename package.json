@@ -4,6 +4,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "convex:dev": "pnpm --filter @repo/convex dev",
     "lint": "turbo run lint",
     "format": "biome check . --write",
     "typecheck": "turbo run check-types"

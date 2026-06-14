@@ -1,0 +1,15 @@
+{
+  // Configures TypeScript to analyze Convex functions.
+  // This configures the type checker to run in the Convex execution environment.
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [],
+    "lib": ["es2022"]
+  }
+}
