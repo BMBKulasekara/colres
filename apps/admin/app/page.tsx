@@ -85,5 +85,6 @@ export default function Home() {
           Go to turborepo.dev →
         </a>
       </footer>
-      );
+    </div>
+  );
 }
