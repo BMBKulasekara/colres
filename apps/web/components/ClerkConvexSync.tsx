@@ -28,6 +28,7 @@ function ClerkConvexSyncContent({ convex }: { convex: ConvexReactClient }) {
       name: user.fullName ?? (computedName || 'Anonymous'),
       email: user.primaryEmailAddress?.emailAddress ?? '',
       imageUrl: user.imageUrl ?? '',
+      role: 'user',
     });
   }, [convex, isLoaded, isSignedIn, user]);
 

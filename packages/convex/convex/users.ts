@@ -17,6 +17,7 @@ export const upsert = mutation({
     name: v.string(),
     email: v.string(),
     imageUrl: v.optional(v.string()),
+    role: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -29,6 +30,7 @@ export const upsert = mutation({
         name: args.name,
         email: args.email,
         imageUrl: args.imageUrl ?? "",
+        role: args.role ?? "user",
       });
       return existing._id;
     }
@@ -38,6 +40,7 @@ export const upsert = mutation({
       name: args.name,
       email: args.email,
       imageUrl: args.imageUrl ?? "",
+      role: args.role ?? "user",
       createdAt: Date.now(),
     });
   },

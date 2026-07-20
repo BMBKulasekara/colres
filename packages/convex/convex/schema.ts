@@ -7,6 +7,7 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     imageUrl: v.string(),
+    role: v.string(),
     createdAt: v.number(),
   }).index("by_clerk_id", ["clerkId"]),
   tasks: defineTable({
