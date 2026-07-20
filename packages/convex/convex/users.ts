@@ -30,7 +30,6 @@ export const upsert = mutation({
         name: args.name,
         email: args.email,
         imageUrl: args.imageUrl ?? "",
-        role: args.role ?? "user",
       });
       return existing._id;
     }
