@@ -11,6 +11,7 @@
     "check-types": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.5.20",
     "@repo/convex": "workspace:*",
     "@repo/ui": "workspace:*",
     "convex": "^1.19.2",
