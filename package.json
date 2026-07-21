@@ -8,7 +8,8 @@
     "lint": "turbo run lint",
     "format": "biome check . --write",
     "format:check": "biome ci .",
-    "typecheck": "turbo run check-types"
+    "typecheck": "turbo run check-types",
+    "ui:add": "npx shadcn@latest add --cwd packages/ui"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",
