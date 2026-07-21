@@ -1,5 +1,6 @@
 'use client';
 
+import { useClerk, useUser } from '@clerk/nextjs';
 import { Avatar, AvatarFallback, AvatarImage } from '@repo/ui/components/ui/avatar';
 import {
   DropdownMenu,
@@ -25,7 +26,7 @@ import {
 } from '@tabler/icons-react';
 
 export function NavUser({
-  user,
+  user: defaultUser,
 }: {
   user: {
     name: string;
@@ -34,6 +35,14 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const { user: clerkUser } = useUser();
+  const { signOut } = useClerk();
+
+  const user = {
+    name: clerkUser?.fullName || clerkUser?.username || defaultUser.name,
+    email: clerkUser?.primaryEmailAddress?.emailAddress || defaultUser.email,
+    avatar: clerkUser?.imageUrl || defaultUser.avatar,
+  };
 
   return (
     <SidebarMenu>
@@ -89,7 +98,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => signOut()}>
               <IconLogout />
               Log out
             </DropdownMenuItem>
