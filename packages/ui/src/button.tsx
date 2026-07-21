@@ -1,20 +1,21 @@
 "use client";
 
-import { ReactNode } from "react";
+import * as React from "react";
+import { Button as ShadcnButton } from "./components/ui/button";
 
-interface ButtonProps {
-  children: ReactNode;
-  className?: string;
-  appName: string;
+interface ButtonProps extends React.ComponentProps<typeof ShadcnButton> {
+  appName?: string;
 }
 
-export const Button = ({ children, className, appName }: ButtonProps) => {
-  return (
-    <button
-      className={className}
-      onClick={() => alert(`Hello from your ${appName} app!`)}
-    >
-      {children}
-    </button>
-  );
+export const Button = ({ appName, onClick, ...props }: ButtonProps) => {
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (appName) {
+      alert(`Hello from your ${appName} app!`);
+    }
+    if (onClick) {
+      onClick(e);
+    }
+  };
+
+  return <ShadcnButton onClick={handleClick} {...props} />;
 };
