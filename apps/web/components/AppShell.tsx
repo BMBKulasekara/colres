@@ -7,7 +7,19 @@ import { AuthNav } from './AuthNav';
 import { ClerkConvexSync } from './ClerkConvexSync';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const convex = useMemo(() => new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL ?? ''), []);
+  const convex = useMemo(() => {
+    const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!url) {
+      if (typeof window !== 'undefined') {
+        throw new Error(
+          'NEXT_PUBLIC_CONVEX_URL environment variable is missing. ' +
+            'Please check your .env.local file in the application directory.'
+        );
+      }
+      return new ConvexReactClient('https://unknown-convex-url.convex.cloud');
+    }
+    return new ConvexReactClient(url);
+  }, []);
 
   return (
     <ClerkProvider>
