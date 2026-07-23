@@ -5,6 +5,7 @@
   "exports": {
     "./components/*": "./src/components/*.tsx",
     "./lib/*": "./src/lib/*.ts",
+    "./globals.css": "./src/globals.css",
     "./*": "./src/*.tsx"
   },
   "scripts": {
@@ -28,6 +29,8 @@
     "radix-ui": "^1.6.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "tailwind-merge": "^3.6.0"
+    "recharts": "3.8.0",
+    "tailwind-merge": "^3.6.0",
+    "vaul": "^1.1.2"
   }
 }
