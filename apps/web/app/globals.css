@@ -6,3 +6,149 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* Tiptap Rich Text Editor Styling */
+.tiptap {
+  min-height: 250px;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  outline: none;
+
+  &:focus {
+    outline: none;
+  }
+
+  /* Headings styling */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-weight: 700;
+    line-height: 1.25;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: var(--foreground);
+  }
+
+  h1 {
+    font-size: 2rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+  }
+
+  /* Paragraphs */
+  p {
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+    line-height: 1.625;
+  }
+
+  /* List items */
+  ul,
+  ol {
+    margin-top: 0.75rem;
+    margin-bottom: 0.75rem;
+    padding-left: 1.5rem;
+  }
+
+  ul {
+    list-style-type: disc;
+  }
+
+  ol {
+    list-style-type: decimal;
+  }
+
+  li {
+    margin-top: 0.25rem;
+    margin-bottom: 0.25rem;
+
+    &>p {
+      margin: 0;
+    }
+  }
+
+  /* Blockquote styling */
+  blockquote {
+    border-left: 4px solid var(--primary, #3b82f6);
+    padding-left: 1rem;
+    margin: 1.25rem 0;
+    font-style: italic;
+    color: #4b5563;
+
+    .dark & {
+      color: #9ca3af;
+    }
+  }
+
+  /* Inline Code */
+  code {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: #ef4444;
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+    font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    .dark & {
+      background-color: rgba(255, 255, 255, 0.1);
+      color: #f87171;
+    }
+  }
+
+  /* Code Block styling */
+  pre {
+    background-color: #1e1e2e;
+    color: #cdd6f4;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 1.25rem 0;
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+
+    code {
+      background-color: transparent;
+      color: inherit;
+      padding: 0;
+      border-radius: 0;
+      font-size: 0.875rem;
+    }
+  }
+
+  /* Horizontal Rule styling */
+  hr {
+    border: none;
+    border-top: 1px solid var(--border, #e5e7eb);
+    margin: 2rem 0;
+  }
+
+  /* Link styling */
+  a {
+    color: var(--primary, #3b82f6);
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    font-weight: 500;
+    cursor: pointer;
+
+    &:hover {
+      opacity: 0.85;
+    }
+  }
+}
+
+/* Empty Editor Placeholder styling */
+.tiptap p.is-editor-empty:first-child::before {
+  color: #9ca3af;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

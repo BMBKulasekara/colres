@@ -10,8 +10,16 @@ export default defineSchema({
     role: v.string(),
     createdAt: v.number(),
   }).index("by_clerk_id", ["clerkId"]),
-  tasks: defineTable({
-    text: v.string(),
-    isCompleted: v.boolean(),
-  }),
+
+
+  documents: defineTable({
+    author: v.id("users"),
+    title: v.string(),
+    slug: v.string(),
+    status: v.boolean(),
+    content: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_author", ["author"]),
+
 });
