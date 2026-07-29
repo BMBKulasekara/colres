@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-export default function TipTapEditor() {
+export default function TipTapEditor({ isPageScrolled = false }: { isPageScrolled?: boolean }) {
   const [isEditable, setIsEditable] = useState(true);
 
   const editor = useEditor({
@@ -106,7 +106,11 @@ export default function TipTapEditor() {
   return (
     <div className="flex flex-col w-full rounded-lg border border-border bg-background shadow-xs">
       {/* Control Bar for Editor Config */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/20 text-xs text-muted-foreground">
+      <div
+        className={`flex items-center justify-between px-4 py-2 border-b border-border bg-muted text-xs text-muted-foreground sticky transition-all duration-300 z-10 ${
+          isPageScrolled ? 'top-14' : 'top-24'
+        }`}
+      >
         <div className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -132,7 +136,11 @@ export default function TipTapEditor() {
 
       {/* Editor Toolbar */}
       {isEditable && (
-        <div className="flex flex-wrap gap-1 p-2 border-b border-border bg-muted/40 items-center justify-between">
+        <div
+          className={`flex flex-wrap gap-1 p-2 border-b border-border bg-muted items-center justify-between sticky transition-all duration-300 z-20 ${
+            isPageScrolled ? 'top-[88px]' : 'top-[128px]'
+          }`}
+        >
           <div className="flex flex-wrap items-center gap-1">
             {/* Inline styles */}
             <Button
@@ -181,7 +189,7 @@ export default function TipTapEditor() {
               <Code className="h-4 w-4" />
             </Button>
 
-            <div className="w-[1px] h-5 bg-border mx-1 self-center" />
+            <div className="w-px h-5 bg-border mx-1 self-center" />
 
             {/* Headings */}
             <Button
@@ -223,7 +231,7 @@ export default function TipTapEditor() {
               <Type className="h-4 w-4" />
             </Button>
 
-            <div className="w-[1px] h-5 bg-border mx-1 self-center" />
+            <div className="w-px h-5 bg-border mx-1 self-center" />
 
             {/* Lists */}
             <Button
@@ -245,7 +253,7 @@ export default function TipTapEditor() {
               <ListOrdered className="h-4 w-4" />
             </Button>
 
-            <div className="w-[1px] h-5 bg-border mx-1 self-center" />
+            <div className="w-px h-5 bg-border mx-1 self-center" />
 
             {/* Hyperlinks */}
             <Button
@@ -270,7 +278,7 @@ export default function TipTapEditor() {
               </Button>
             )}
 
-            <div className="w-[1px] h-5 bg-border mx-1 self-center" />
+            <div className="w-px h-5 bg-border mx-1 self-center" />
 
             {/* Formatting items */}
             <Button
@@ -360,7 +368,7 @@ export default function TipTapEditor() {
       )}
 
       {/* Editor Area */}
-      <div className="prose max-w-none bg-background min-h-[300px]">
+      <div className="prose max-w-none bg-background min-h-75">
         <EditorContent editor={editor} />
       </div>
     </div>

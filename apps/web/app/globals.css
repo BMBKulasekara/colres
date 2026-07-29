@@ -19,7 +19,12 @@ body {
   }
 
   /* Headings styling */
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-weight: 700;
     line-height: 1.25;
     margin-top: 1.5rem;
@@ -27,9 +32,17 @@ body {
     color: var(--foreground);
   }
 
-  h1 { font-size: 2rem; }
-  h2 { font-size: 1.5rem; }
-  h3 { font-size: 1.25rem; }
+  h1 {
+    font-size: 2rem;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+  }
 
   /* Paragraphs */
   p {
@@ -39,7 +52,8 @@ body {
   }
 
   /* List items */
-  ul, ol {
+  ul,
+  ol {
     margin-top: 0.75rem;
     margin-bottom: 0.75rem;
     padding-left: 1.5rem;
@@ -56,8 +70,8 @@ body {
   li {
     margin-top: 0.25rem;
     margin-bottom: 0.25rem;
-    
-    & > p {
+
+    &>p {
       margin: 0;
     }
   }
@@ -69,7 +83,7 @@ body {
     margin: 1.25rem 0;
     font-style: italic;
     color: #4b5563;
-    
+
     .dark & {
       color: #9ca3af;
     }
@@ -138,4 +152,3 @@ body {
   height: 0;
   pointer-events: none;
 }
-
