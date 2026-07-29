@@ -31,7 +31,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             padding: '1rem 1.5rem',
             gap: '0.75rem',
             borderBottom: '1px solid #e5e7eb',
+            height: '64px',
           }}
+          className="bg-lime-300"
         >
           <AuthNav />
         </header>

@@ -28,8 +28,19 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-export default function TipTapEditor({ isPageScrolled = false }: { isPageScrolled?: boolean }) {
+interface TipTapEditorProps {
+  isPageScrolled?: boolean;
+  initialContent?: string;
+  onChange?: (html: string) => void;
+}
+
+export default function TipTapEditor({
+  isPageScrolled = false,
+  initialContent,
+  onChange,
+}: TipTapEditorProps) {
   const [isEditable, setIsEditable] = useState(true);
+  const [hasLoadedContent, setHasLoadedContent] = useState(false);
 
   const editor = useEditor({
     extensions: [
@@ -51,20 +62,18 @@ export default function TipTapEditor({ isPageScrolled = false }: { isPageScrolle
         placeholder: 'Start typing your document here...',
       }),
     ],
-    content: `
-            <h1>Welcome to the Rich Text Editor</h1>
-            <p>This editor is fully configured with a modern, responsive toolbar, bubble menus, and rich text formatting options.</p>
-            <p>Try out these formatting options:</p>
-            <ul>
-                <li><strong>Bold</strong>, <em>italic</em>, <u>underline</u>, and <s>strikethrough</s> formatting.</li>
-                <li>Inline <code>code blocks</code> and multi-line code blocks.</li>
-                <li>Bullet lists, numbered lists, blockquotes, and headings.</li>
-            </ul>
-            <blockquote>
-                "Design is not just what it looks like and feels like. Design is how it works." — Steve Jobs
-            </blockquote>
-        `,
+    content: initialContent || '',
+    onUpdate: ({ editor }) => {
+      onChange?.(editor.getHTML());
+    },
   });
+
+  useEffect(() => {
+    if (editor && initialContent !== undefined && !hasLoadedContent) {
+      editor.commands.setContent(initialContent);
+      setHasLoadedContent(true);
+    }
+  }, [editor, initialContent, hasLoadedContent]);
 
   useEffect(() => {
     if (editor) {
@@ -368,7 +377,7 @@ export default function TipTapEditor({ isPageScrolled = false }: { isPageScrolle
       )}
 
       {/* Editor Area */}
-      <div className="prose max-w-none bg-background min-h-75">
+      <div className="prose max-w-none bg-background min-h-150">
         <EditorContent editor={editor} />
       </div>
     </div>
