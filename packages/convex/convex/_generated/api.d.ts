@@ -9,6 +9,7 @@
  */
 
 import type * as documents from "../documents.js";
+import type * as organizations from "../organizations.js";
 import type * as users from "../users.js";
 
 import type {
@@ -19,6 +20,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   documents: typeof documents;
+  organizations: typeof organizations;
   users: typeof users;
 }>;
 

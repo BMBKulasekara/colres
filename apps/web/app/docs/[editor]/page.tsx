@@ -105,7 +105,7 @@ export default function Editor() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-muted/10">
         <div className="flex flex-col items-center gap-4">
-          <Loader />
+          <Loader className="animate-spin" />
           <span className="text-sm font-semibold text-muted-foreground animate-pulse">
             Loading document...
           </span>
@@ -163,13 +163,13 @@ export default function Editor() {
                 <div className="flex items-center gap-2 text-xs font-semibold select-none">
                   {saveStatus === 'saving' && (
                     <span className="text-muted-foreground flex items-center gap-1.5 animate-pulse">
-                      <Loader />
+                      <Loader size={16} className="animate-spin" />
                       Saving...
                     </span>
                   )}
                   {saveStatus === 'saved' && (
                     <span className="text-emerald-500 flex items-center gap-1">
-                      <Check />
+                      <Check size={16} />
                       Saved
                     </span>
                   )}
@@ -198,7 +198,7 @@ export default function Editor() {
                 isScrolled ? 'text-[10px]' : 'text-xs'
               }`}
             >
-              Rich text document editor • Draft {docs?.slug}
+              Rich text document editor • Draft
             </p>
           </div>
         </div>

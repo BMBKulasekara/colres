@@ -102,3 +102,25 @@ export const upsert = mutation({
     });
   },
 });
+
+export const syncUserOrganizations = mutation({
+  args: {
+    clerkId: v.string(),
+    orgIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (!existing) {
+      throw new Error("User not found");
+    }
+
+    await ctx.db.patch(existing._id, {
+      orgIds: args.orgIds,
+    });
+    return existing._id;
+  },
+});
