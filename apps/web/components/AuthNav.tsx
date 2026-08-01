@@ -1,6 +1,12 @@
 'use client';
 
-import { SignInButton, SignUpButton, UserButton, useAuth } from '@clerk/nextjs';
+import {
+  OrganizationSwitcher,
+  SignInButton,
+  SignUpButton,
+  UserButton,
+  useAuth,
+} from '@clerk/nextjs';
 import { Skeleton } from '@repo/ui/components/ui/skeleton';
 
 export function AuthNav() {
@@ -22,7 +28,10 @@ export function AuthNav() {
           <SignUpButton />
         </>
       ) : (
-        <UserButton />
+        <>
+          <OrganizationSwitcher />
+          <UserButton />
+        </>
       )}
     </div>
   );

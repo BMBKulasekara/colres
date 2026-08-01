@@ -8,6 +8,7 @@ export const createDocument = mutation({
         content: v.string(),
         status: v.boolean(),
         clerkId: v.string(),
+        orgId: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const user = await ctx.db.query("users").filter(
@@ -31,6 +32,7 @@ export const createDocument = mutation({
             createdAt: Date.now(),
             updatedAt: Date.now(),
             author: user._id,
+            orgId: args.orgId,
         });
         return document;
     }
@@ -76,6 +78,7 @@ export const updateDocument = mutation({
 export const getAllDocumentsByUserId = query({
     args: {
         clerkId: v.string(),
+        orgId: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const user = await ctx.db
@@ -87,11 +90,44 @@ export const getAllDocumentsByUserId = query({
             return [];
         }
 
-        const documents = await ctx.db
-            .query("documents")
-            .withIndex("by_author", (q) => q.eq("author", user._id))
-            .collect();
-
-        return documents;
+        if (args.orgId) {
+            const documents = await ctx.db
+                .query("documents")
+                .withIndex("by_org_id", (q) => q.eq("orgId", args.orgId))
+                .collect();
+            return documents;
+        } else {
+            const documents = await ctx.db
+                .query("documents")
+                .withIndex("by_author", (q) => q.eq("author", user._id))
+                .collect();
+            return documents.filter((doc) => !doc.orgId);
+        }
     }
 })
+export const deleteDocumentById = mutation({
+    args: {
+        id: v.id("documents"),
+    },
+    handler: async (ctx, args) => {
+        const document = await ctx.db.get(args.id);
+        if (!document) {
+            throw new Error("Document not found");
+        }
+
+        await ctx.db.delete(args.id);
+        return document;
+    }
+})
+
+export const getDocumentsByOrgId = query({
+    args: {
+        orgId: v.string(),
+    },
+    handler: async (ctx, args) => {
+        return await ctx.db
+            .query("documents")
+            .withIndex("by_org_id", (q) => q.eq("orgId", args.orgId))
+            .collect();
+    }
+});
