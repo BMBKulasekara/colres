@@ -7,23 +7,61 @@ import { Check, Loader } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import Tiptap from '../../../components/TipTap';
+import { Collaborators } from './Collaborators';
+import { Room } from './Room';
 
 export default function Editor() {
-  const [title, setTitle] = useState('Untitled Document');
-  const [content, setContent] = useState('');
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
-  const [hasInitialized, setHasInitialized] = useState(false);
-
-  const router = useRouter();
   const params = useParams();
   const editorSlug = params?.editor as string;
+  const router = useRouter();
 
   const docs = useQuery(api.documents.getDocument, {
     slug: editorSlug || '',
   });
+
+  if (docs === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-muted/10">
+        <div className="flex flex-col items-center gap-4">
+          <Loader className="animate-spin" />
+          <span className="text-sm font-semibold text-muted-foreground animate-pulse">
+            Loading document...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (docs === null) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-muted/10 gap-4">
+        <h1 className="text-2xl font-bold text-foreground">Document not found</h1>
+        <p className="text-muted-foreground text-sm">
+          The document you are looking for does not exist or has been deleted.
+        </p>
+        <Button onClick={() => router.push('/docs')}>Back to Documents</Button>
+      </div>
+    );
+  }
+
+  return (
+    <Room roomId={docs._id}>
+      <EditorContent docs={docs} />
+    </Room>
+  );
+}
+
+interface EditorContentProps {
+  docs: any;
+}
+
+function EditorContent({ docs }: EditorContentProps) {
+  const [title, setTitle] = useState(docs.title);
+  const [content, setContent] = useState(docs.content);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
 
   const updateDoc = useMutation(api.documents.updateDocument);
 
@@ -32,24 +70,14 @@ export default function Editor() {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 0);
     };
-    // Initialize
     setIsScrolled(window.scrollY > 0);
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Initialize page title and editor content once from database
-  useEffect(() => {
-    if (docs && !hasInitialized) {
-      setTitle(docs.title);
-      setContent(docs.content);
-      setHasInitialized(true);
-    }
-  }, [docs, hasInitialized]);
-
   // Document saving action
   const handleSave = useCallback(async () => {
-    if (!docs || isSaving) return;
+    if (isSaving) return;
     setIsSaving(true);
     setSaveStatus('saving');
     try {
@@ -66,7 +94,7 @@ export default function Editor() {
     } finally {
       setIsSaving(false);
     }
-  }, [docs, title, content, isSaving, updateDoc]);
+  }, [docs._id, title, content, isSaving, updateDoc]);
 
   // Keyboard shortcut Ctrl+S or Cmd+S to save
   useEffect(() => {
@@ -99,33 +127,6 @@ export default function Editor() {
     setIsDirty(true);
     setSaveStatus('unsaved');
   };
-
-  // Loading indicator while waiting for query response
-  if (docs === undefined) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/10">
-        <div className="flex flex-col items-center gap-4">
-          <Loader className="animate-spin" />
-          <span className="text-sm font-semibold text-muted-foreground animate-pulse">
-            Loading document...
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  // Not found fallback screen
-  if (docs === null) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-muted/10 gap-4">
-        <h1 className="text-2xl font-bold text-foreground">Document not found</h1>
-        <p className="text-muted-foreground text-sm">
-          The document you are looking for does not exist or has been deleted.
-        </p>
-        <Button onClick={() => router.push('/docs')}>Back to Documents</Button>
-      </div>
-    );
-  }
 
   return (
     <div className={`min-h-screen bg-muted/10 pb-20 ${isScrolled ? 'mb-24' : 'mb-0'}`}>
@@ -160,6 +161,8 @@ export default function Editor() {
 
               {/* Document status indication and manual save controls */}
               <div className="flex items-center gap-4 ml-4">
+                <Collaborators />
+
                 <div className="flex items-center gap-2 text-xs font-semibold select-none">
                   {saveStatus === 'saving' && (
                     <span className="text-muted-foreground flex items-center gap-1.5 animate-pulse">

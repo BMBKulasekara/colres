@@ -1,5 +1,13 @@
 'use client';
 
+import { useThreads } from '@liveblocks/react/suspense';
+import {
+  AnchoredThreads,
+  FloatingComposer,
+  FloatingThreads,
+  FloatingToolbar,
+  useLiveblocksExtension,
+} from '@liveblocks/react-tiptap';
 import { Button } from '@repo/ui/components/ui/button';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -42,9 +50,13 @@ export default function TipTapEditor({
   const [isEditable, setIsEditable] = useState(true);
   const [hasLoadedContent, setHasLoadedContent] = useState(false);
 
+  const liveblocks = useLiveblocksExtension();
+
   const editor = useEditor({
     extensions: [
+      liveblocks,
       StarterKit.configure({
+        undoRedo: false, // Liveblocks handles history/undo-redo
         heading: {
           levels: [1, 2, 3],
         },
@@ -62,7 +74,6 @@ export default function TipTapEditor({
         placeholder: 'Start typing your document here...',
       }),
     ],
-    content: initialContent || '',
     onUpdate: ({ editor }) => {
       onChange?.(editor.getHTML());
     },
@@ -70,7 +81,9 @@ export default function TipTapEditor({
 
   useEffect(() => {
     if (editor && initialContent !== undefined && !hasLoadedContent) {
-      editor.commands.setContent(initialContent);
+      if (editor.isEmpty) {
+        editor.commands.setContent(initialContent);
+      }
       setHasLoadedContent(true);
     }
   }, [editor, initialContent, hasLoadedContent]);
@@ -91,6 +104,8 @@ export default function TipTapEditor({
       isCode: ctx.editor?.isActive('code') ?? false,
     }),
   });
+
+  const { threads } = useThreads({ query: { resolved: false } });
 
   if (!editor) {
     return null;
@@ -376,10 +391,26 @@ export default function TipTapEditor({
         </BubbleMenu>
       )}
 
-      {/* Editor Area */}
-      <div className="prose max-w-none bg-background min-h-150">
-        <EditorContent editor={editor} />
+      {/* Editor & Comments Area */}
+      <div className="flex flex-col lg:flex-row relative w-full items-start bg-background rounded-b-lg">
+        {/* Editor Area */}
+        <div className="prose max-w-none bg-background min-h-[450px] p-4 flex-1 w-full border-r border-border/40">
+          <EditorContent editor={editor} />
+        </div>
+
+        {/* Desktop Comments Sidebar */}
+        <div className="hidden lg:block w-80 shrink-0 p-4 sticky top-[180px] max-h-[calc(100vh-200px)] overflow-y-auto bg-muted/5">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 px-2">
+            Comments
+          </h3>
+          <AnchoredThreads editor={editor} threads={threads} />
+        </div>
       </div>
+
+      {/* Floating UI Elements */}
+      <FloatingToolbar editor={editor} />
+      <FloatingThreads editor={editor} threads={threads} className="floating-threads lg:hidden" />
+      <FloatingComposer editor={editor} className="floating-composer" />
     </div>
   );
 }

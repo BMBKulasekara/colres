@@ -152,3 +152,32 @@ body {
   height: 0;
   pointer-events: none;
 }
+
+/* Liveblocks Comments Responsive & Layout overrides */
+.floating-threads {
+  display: none;
+}
+
+.floating-composer {
+  z-index: 50;
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 0.5rem;
+}
+
+@media (max-width: 1024px) {
+  .floating-threads {
+    display: block;
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 40;
+  }
+}
+
+.anchored-threads {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
