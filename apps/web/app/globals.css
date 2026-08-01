@@ -187,3 +187,19 @@ a[href*="liveblocks.io"] {
   flex-direction: column;
   gap: 0.75rem;
 }
+
+/* Comment highlights on TipTap document text */
+[data-comment-id], .lb-comment-mark, .tiptap-thread--inline {
+  background-color: rgba(254, 240, 138, 0.4) !important;
+  border-bottom: 2px dashed #eab308;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+[data-comment-id]:hover, 
+.lb-comment-mark:hover,
+.tiptap-thread--inline:hover,
+[data-comment-id][data-selected],
+.tiptap-thread--selected {
+  background-color: rgba(254, 240, 138, 0.75) !important;
+}

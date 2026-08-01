@@ -1,3 +1,5 @@
+import type { LiveList } from '@liveblocks/client';
+
 // Define Liveblocks types for your application
 // https://liveblocks.io/docs/api-reference/liveblocks-react#Typing-your-data
 declare global {
@@ -10,17 +12,23 @@ declare global {
 
     // The Storage tree for the room, for useMutation, useStorage, etc.
     Storage: {
-      // Example, a conflict-free list
-      // animals: LiveList<string>;
+      messages: LiveList<{
+        id: string;
+        text: string;
+        senderId: string;
+        senderName: string;
+        senderAvatar: string;
+        timestamp: number;
+      }>;
     };
 
     // Custom user info set when authenticating with a secret key
     UserMeta: {
       id: string;
       info: {
-        // Example properties, for useSelf, useUser, useOthers, etc.
-        // name: string;
-        // avatar: string;
+        name: string;
+        avatar: string;
+        color: string;
       };
     };
 
@@ -45,5 +53,3 @@ declare global {
     };
   }
 }
-
-export {};

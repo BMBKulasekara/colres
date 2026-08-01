@@ -39,4 +39,25 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_clerk_org_id", ["clerkOrgId"]),
 
+  chats: defineTable({
+    documentId: v.id("documents"),
+    text: v.string(),
+    senderId: v.string(),
+    senderName: v.string(),
+    senderAvatar: v.string(),
+    createdAt: v.number(),
+  }).index("by_document_id", ["documentId"]),
+
+  comments: defineTable({
+    documentId: v.id("documents"),
+    threadId: v.string(),
+    commentId: v.string(),
+    text: v.string(),
+    senderId: v.string(),
+    senderName: v.string(),
+    senderAvatar: v.string(),
+    createdAt: v.number(),
+  }).index("by_document_id", ["documentId"])
+    .index("by_thread_id", ["threadId"]),
+
 });

@@ -1,11 +1,22 @@
 'use client';
 
+import { useThreads } from '@liveblocks/react/suspense';
+import { Thread } from '@liveblocks/react-ui';
 import { api } from '@repo/convex/_generated/api';
 import { Button } from '@repo/ui/components/ui/button';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from '@repo/ui/components/ui/drawer';
 import { useMutation, useQuery } from 'convex/react';
-import { Check, Loader } from 'lucide-react';
+import { Check, Loader, MessageSquare } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { Chat } from '../../../components/Chat';
 import Tiptap from '../../../components/TipTap';
 import { Collaborators } from './Collaborators';
 import { Room } from './Room';
@@ -55,6 +66,22 @@ interface EditorContentProps {
   docs: any;
 }
 
+function CommentsList() {
+  const { threads } = useThreads({ query: { resolved: false } });
+
+  return (
+    <div className="space-y-4">
+      {threads.length > 0 ? (
+        threads.map((thread) => <Thread key={thread.id} thread={thread} />)
+      ) : (
+        <div className="text-center p-6 text-muted-foreground text-xs">
+          No comments yet. Highlight text in the editor to add a comment!
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditorContent({ docs }: EditorContentProps) {
   const [title, setTitle] = useState(docs.title);
   const [content, setContent] = useState(docs.content);
@@ -62,6 +89,8 @@ function EditorContent({ docs }: EditorContentProps) {
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
+  const [activeTab, setActiveTab] = useState<'comments' | 'chat'>('comments');
+  const [_, setEditorInstance] = useState<any>(null);
 
   const updateDoc = useMutation(api.documents.updateDocument);
 
@@ -193,6 +222,58 @@ function EditorContent({ docs }: EditorContentProps) {
                 >
                   Save
                 </Button>
+
+                <Drawer direction="right">
+                  <DrawerTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground shadow-xs cursor-pointer"
+                      title="Collaboration Panel"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                    </Button>
+                  </DrawerTrigger>
+                  <DrawerContent className="p-0 flex flex-col h-full bg-background border-l border-border max-w-sm sm:max-w-md w-full">
+                    <DrawerHeader className="p-4 border-b border-border/85 text-left">
+                      <DrawerTitle className="text-sm font-bold text-foreground">
+                        Collaboration Panel
+                      </DrawerTitle>
+                      <DrawerDescription className="text-xs text-muted-foreground">
+                        Chat with teammates or view document comments.
+                      </DrawerDescription>
+                    </DrawerHeader>
+
+                    {/* Tab Navigation */}
+                    <div className="flex bg-muted/60 p-1 rounded-lg m-4 border border-border/40 shrink-0">
+                      <Button
+                        onClick={() => setActiveTab('comments')}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                          activeTab === 'comments'
+                            ? 'bg-background text-foreground shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Comments
+                      </Button>
+                      <Button
+                        onClick={() => setActiveTab('chat')}
+                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                          activeTab === 'chat'
+                            ? 'bg-background text-foreground shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Team Chat
+                      </Button>
+                    </div>
+
+                    {/* Tab Content */}
+                    <div className="flex-1 overflow-y-auto px-4 pb-4">
+                      {activeTab === 'comments' ? <CommentsList /> : <Chat />}
+                    </div>
+                  </DrawerContent>
+                </Drawer>
               </div>
             </div>
 
@@ -214,6 +295,7 @@ function EditorContent({ docs }: EditorContentProps) {
             isPageScrolled={isScrolled}
             initialContent={docs.content}
             onChange={handleEditorChange}
+            onEditorReady={setEditorInstance}
           />
         </div>
       </div>

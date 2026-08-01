@@ -1,13 +1,13 @@
 'use client';
 
-import { useThreads } from '@liveblocks/react/suspense';
+import { useRoom, useThreads } from '@liveblocks/react/suspense';
 import {
-  AnchoredThreads,
   FloatingComposer,
   FloatingThreads,
   FloatingToolbar,
   useLiveblocksExtension,
 } from '@liveblocks/react-tiptap';
+import { api } from '@repo/convex/_generated/api';
 import { Button } from '@repo/ui/components/ui/button';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -15,6 +15,7 @@ import Underline from '@tiptap/extension-underline';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
+import { useMutation as useConvexMutation } from 'convex/react';
 import {
   Bold,
   Code,
@@ -40,12 +41,14 @@ interface TipTapEditorProps {
   isPageScrolled?: boolean;
   initialContent?: string;
   onChange?: (html: string) => void;
+  onEditorReady?: (editor: any) => void;
 }
 
 export default function TipTapEditor({
   isPageScrolled = false,
   initialContent,
   onChange,
+  onEditorReady,
 }: TipTapEditorProps) {
   const [isEditable, setIsEditable] = useState(true);
 
@@ -86,6 +89,12 @@ export default function TipTapEditor({
     }
   }, [isEditable, editor]);
 
+  useEffect(() => {
+    if (editor) {
+      onEditorReady?.(editor);
+    }
+  }, [editor, onEditorReady]);
+
   const { isBold, isItalic, isUnderline, isStrikethrough, isCode } = useEditorState({
     editor,
     selector: (ctx) => ({
@@ -98,6 +107,28 @@ export default function TipTapEditor({
   });
 
   const { threads } = useThreads({ query: { resolved: false } });
+  const room = useRoom();
+  const syncConvexComments = useConvexMutation(api.comments.syncComments);
+
+  useEffect(() => {
+    if (!threads || !room) return;
+
+    const mappedComments = threads.flatMap((thread) =>
+      thread.comments.map((c) => ({
+        threadId: thread.id,
+        commentId: c.id,
+        text: JSON.stringify(c.body) || '',
+        senderId: c.userId || '',
+      }))
+    );
+
+    if (mappedComments.length > 0) {
+      void syncConvexComments({
+        documentId: room.id,
+        comments: mappedComments,
+      });
+    }
+  }, [threads, room, syncConvexComments]);
 
   if (!editor) {
     return null;
@@ -383,24 +414,28 @@ export default function TipTapEditor({
         </BubbleMenu>
       )}
 
-      {/* Editor & Comments Area */}
-      <div className="flex flex-col lg:flex-row relative w-full items-start bg-background rounded-b-lg">
-        {/* Editor Area */}
-        <div className="prose max-w-none bg-background min-h-[450px] p-4 flex-1 w-full border-r border-border/40">
-          <EditorContent editor={editor} />
-        </div>
-
-        {/* Desktop Comments Sidebar */}
-        <div className="hidden lg:block w-80 shrink-0 p-4 sticky top-[180px] max-h-[calc(100vh-200px)] overflow-y-auto bg-muted/5">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3 px-2">
-            Comments
-          </h3>
-          <AnchoredThreads editor={editor} threads={threads} />
-        </div>
+      {/* Editor Area */}
+      <div className="prose max-w-none bg-background min-h-[450px] p-4 w-full rounded-b-lg">
+        <EditorContent editor={editor} />
       </div>
 
       {/* Floating UI Elements */}
-      <FloatingToolbar editor={editor} />
+      <FloatingToolbar
+        editor={editor}
+        className="bg-background border border-border shadow-md rounded-lg p-1.5 flex gap-1 items-center z-50 animate-in fade-in zoom-in-95 duration-100"
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          onClick={() => editor.commands.addPendingComment()}
+          title="Add Comment"
+          className="text-primary hover:bg-primary/10 h-7 px-2.5 flex items-center gap-1.5 text-xs font-bold transition-all rounded-md"
+        >
+          <Quote className="h-3.5 w-3.5" />
+          Comment
+        </Button>
+      </FloatingToolbar>
       <FloatingThreads editor={editor} threads={threads} className="floating-threads lg:hidden" />
       <FloatingComposer editor={editor} className="floating-composer" />
     </div>

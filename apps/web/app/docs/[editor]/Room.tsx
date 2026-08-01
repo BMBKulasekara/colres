@@ -1,5 +1,6 @@
 'use client';
 
+import { LiveList } from '@liveblocks/client';
 import { ClientSideSuspense, LiveblocksProvider, RoomProvider } from '@liveblocks/react/suspense';
 import type { ReactNode } from 'react';
 
@@ -36,7 +37,12 @@ export function Room({ roomId, children }: { roomId: string; children: ReactNode
         }
       }}
     >
-      <RoomProvider id={roomId}>
+      <RoomProvider
+        id={roomId}
+        initialStorage={{
+          messages: new LiveList([]),
+        }}
+      >
         <ClientSideSuspense
           fallback={
             <div className="min-h-screen flex items-center justify-center bg-muted/10">

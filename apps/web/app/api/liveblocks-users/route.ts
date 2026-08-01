@@ -25,7 +25,7 @@ function getRandomColor(id: string) {
     hash = id.charCodeAt(i) + ((hash << 5) - hash);
   }
   const index = Math.abs(hash) % COLORS.length;
-  return COLORS[index];
+  return COLORS[index] || '#e11d48';
 }
 
 export async function POST(request: Request) {
