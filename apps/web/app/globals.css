@@ -144,6 +144,12 @@ body {
   }
 }
 
+/* Temporarily hide the Liveblocks branding badge during local development */
+a[href*="liveblocks.io"] {
+  display: none !important;
+}
+
+
 /* Empty Editor Placeholder styling */
 .tiptap p.is-editor-empty:first-child::before {
   color: #9ca3af;

@@ -48,9 +48,10 @@ export default function TipTapEditor({
   onChange,
 }: TipTapEditorProps) {
   const [isEditable, setIsEditable] = useState(true);
-  const [hasLoadedContent, setHasLoadedContent] = useState(false);
 
-  const liveblocks = useLiveblocksExtension();
+  const liveblocks = useLiveblocksExtension({
+    initialContent,
+  });
 
   const editor = useEditor({
     extensions: [
@@ -78,15 +79,6 @@ export default function TipTapEditor({
       onChange?.(editor.getHTML());
     },
   });
-
-  useEffect(() => {
-    if (editor && initialContent !== undefined && !hasLoadedContent) {
-      if (editor.isEmpty) {
-        editor.commands.setContent(initialContent);
-      }
-      setHasLoadedContent(true);
-    }
-  }, [editor, initialContent, hasLoadedContent]);
 
   useEffect(() => {
     if (editor) {
