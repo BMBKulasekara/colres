@@ -40,36 +40,6 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const authResult = await verifyAdmin();
-    if ('error' in authResult) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status });
-    }
-
-    const { convex, userId } = authResult;
-    const { title, slug, content, status, orgId } = await request.json();
-
-    if (!title || !slug) {
-      return NextResponse.json({ error: 'Title and Slug are required' }, { status: 400 });
-    }
-
-    const newDoc = await convex.mutation(api.documents.createDocument, {
-      title,
-      slug,
-      content: content ?? '',
-      status: !!status,
-      clerkId: userId,
-      orgId,
-    });
-
-    return NextResponse.json(newDoc);
-  } catch (error: any) {
-    console.error('Error creating document:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
-  }
-}
-
 export async function PATCH(request: Request) {
   try {
     const authResult = await verifyAdmin();
