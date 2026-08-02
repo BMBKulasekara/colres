@@ -1,6 +1,7 @@
 import { currentUser } from '@clerk/nextjs/server';
 import { Liveblocks } from '@liveblocks/node';
 
+//github secret added
 const liveblocks = new Liveblocks({
   secret: process.env.LIVEBLOCKS_SECRET_KEY!,
 });
