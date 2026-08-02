@@ -436,7 +436,7 @@ export default function TipTapEditor({
           Comment
         </Button>
       </FloatingToolbar>
-      <FloatingThreads editor={editor} threads={threads} className="floating-threads lg:hidden" />
+      <FloatingThreads editor={editor} threads={threads} className="floating-threads" />
       <FloatingComposer editor={editor} className="floating-composer" />
     </div>
   );

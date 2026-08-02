@@ -161,7 +161,7 @@ a[href*="liveblocks.io"] {
 
 /* Liveblocks Comments Responsive & Layout overrides */
 .floating-threads {
-  display: none;
+  display: block;
 }
 
 .floating-composer {

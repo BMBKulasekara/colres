@@ -3,6 +3,7 @@
 import { useThreads } from '@liveblocks/react/suspense';
 import { Thread } from '@liveblocks/react-ui';
 import { api } from '@repo/convex/_generated/api';
+import { useIsMobile } from '@repo/ui/components/hooks/use-mobile';
 import { Button } from '@repo/ui/components/ui/button';
 import {
   Drawer,
@@ -91,6 +92,7 @@ function EditorContent({ docs }: EditorContentProps) {
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
   const [activeTab, setActiveTab] = useState<'comments' | 'chat'>('comments');
   const [_, setEditorInstance] = useState<any>(null);
+  const isMobile = useIsMobile();
 
   const updateDoc = useMutation(api.documents.updateDocument);
 
@@ -223,7 +225,7 @@ function EditorContent({ docs }: EditorContentProps) {
                   Save
                 </Button>
 
-                <Drawer direction="right">
+                <Drawer direction={isMobile ? 'bottom' : 'right'}>
                   <DrawerTrigger asChild>
                     <Button
                       variant="outline"
