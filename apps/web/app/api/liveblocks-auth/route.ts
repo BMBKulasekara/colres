@@ -1,11 +1,6 @@
 import { currentUser } from '@clerk/nextjs/server';
 import { Liveblocks } from '@liveblocks/node';
 
-//github secret added
-const liveblocks = new Liveblocks({
-  secret: process.env.LIVEBLOCKS_SECRET_KEY!,
-});
-
 const COLORS = [
   '#e11d48', // rose
   '#db2777', // pink
@@ -41,6 +36,16 @@ export async function POST(request: Request) {
     if (!room) {
       return new Response('Missing room ID', { status: 400 });
     }
+
+    const secret = process.env.LIVEBLOCKS_SECRET_KEY;
+    if (!secret || !secret.startsWith('sk_')) {
+      console.error(
+        'Missing or invalid LIVEBLOCKS_SECRET_KEY; expected a Liveblocks secret starting with "sk_"'
+      );
+      return new Response('Liveblocks secret not configured', { status: 500 });
+    }
+
+    const liveblocks = new Liveblocks({ secret });
 
     // Ensure the room exists on Liveblocks. Create it if it doesn't.
     try {
