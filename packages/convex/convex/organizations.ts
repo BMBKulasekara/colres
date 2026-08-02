@@ -54,3 +54,9 @@ export const getOrganizationByClerkId = query({
       .first();
   },
 });
+
+export const getAllOrganizations = query({
+  handler: async (ctx) => {
+    return await ctx.db.query("organizations").collect();
+  },
+});
