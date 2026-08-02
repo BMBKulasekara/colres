@@ -144,6 +144,12 @@ body {
   }
 }
 
+/* Temporarily hide the Liveblocks branding badge during local development */
+a[href*="liveblocks.io"] {
+  display: none !important;
+}
+
+
 /* Empty Editor Placeholder styling */
 .tiptap p.is-editor-empty:first-child::before {
   color: #9ca3af;
@@ -151,4 +157,49 @@ body {
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+/* Liveblocks Comments Responsive & Layout overrides */
+.floating-threads {
+  display: block;
+}
+
+.floating-composer {
+  z-index: 50;
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: 0.5rem;
+}
+
+@media (max-width: 1024px) {
+  .floating-threads {
+    display: block;
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 40;
+  }
+}
+
+.anchored-threads {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Comment highlights on TipTap document text */
+[data-comment-id], .lb-comment-mark, .tiptap-thread--inline {
+  background-color: rgba(254, 240, 138, 0.4) !important;
+  border-bottom: 2px dashed #eab308;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+[data-comment-id]:hover, 
+.lb-comment-mark:hover,
+.tiptap-thread--inline:hover,
+[data-comment-id][data-selected],
+.tiptap-thread--selected {
+  background-color: rgba(254, 240, 138, 0.75) !important;
 }

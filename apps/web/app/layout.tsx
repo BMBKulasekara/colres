@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import localFont from 'next/font/local';
 import { AppShell } from '../components/AppShell';
 import './globals.css';
+import '@liveblocks/react-ui/styles.css';
+import '@liveblocks/react-tiptap/styles.css';
 
 const geistSans = localFont({
   src: './fonts/GeistVF.woff',
