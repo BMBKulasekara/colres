@@ -2,7 +2,11 @@ import { api } from '@repo/convex/_generated/api';
 import { ConvexHttpClient } from 'convex/browser';
 import { NextResponse } from 'next/server';
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+function getConvexClient() {
+  const url = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
+  if (!url) return null;
+  return new ConvexHttpClient(url);
+}
 
 const COLORS = [
   '#e11d48',
@@ -33,6 +37,12 @@ export async function POST(request: Request) {
     const { userIds } = await request.json();
     if (!userIds || !Array.isArray(userIds)) {
       return NextResponse.json({ error: 'Invalid userIds' }, { status: 400 });
+    }
+
+    const convex = getConvexClient();
+    if (!convex) {
+      console.error('Missing Convex deployment URL (NEXT_PUBLIC_CONVEX_URL or CONVEX_URL).');
+      return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
     }
 
     const users = await Promise.all(

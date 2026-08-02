@@ -2,12 +2,22 @@ import { api } from '@repo/convex/_generated/api';
 import { ConvexHttpClient } from 'convex/browser';
 import { NextResponse } from 'next/server';
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+function getConvexClient() {
+  const url = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
+  if (!url) return null;
+  return new ConvexHttpClient(url);
+}
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const text = searchParams.get('text') || '';
+
+    const convex = getConvexClient();
+    if (!convex) {
+      console.error('Missing Convex deployment URL (NEXT_PUBLIC_CONVEX_URL or CONVEX_URL).');
+      return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
+    }
 
     const allUsers = await convex.query(api.users.getAllUsers);
 
