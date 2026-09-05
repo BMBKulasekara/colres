@@ -20,6 +20,7 @@ export default defineSchema({
     slug: v.string(),
     status: v.boolean(),
     content: v.string(),
+    description: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

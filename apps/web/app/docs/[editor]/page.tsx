@@ -18,6 +18,7 @@ import { Check, Loader, MessageSquare } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Chat } from '../../../components/Chat';
+import { ResearchPanel } from '../../../components/ResearchPanel';
 import Tiptap from '../../../components/TipTap';
 import { Collaborators } from './Collaborators';
 import { Room } from './Room';
@@ -90,7 +91,7 @@ function EditorContent({ docs }: EditorContentProps) {
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
-  const [activeTab, setActiveTab] = useState<'comments' | 'chat'>('comments');
+  const [activeTab, setActiveTab] = useState<'comments' | 'chat' | 'research'>('comments');
   const [_, setEditorInstance] = useState<any>(null);
   const isMobile = useIsMobile();
 
@@ -250,7 +251,7 @@ function EditorContent({ docs }: EditorContentProps) {
                     <div className="flex bg-muted/60 p-1 rounded-lg m-4 border border-border/40 shrink-0">
                       <Button
                         onClick={() => setActiveTab('comments')}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
                           activeTab === 'comments'
                             ? 'bg-background text-foreground shadow-xs'
                             : 'text-muted-foreground hover:text-foreground'
@@ -260,7 +261,7 @@ function EditorContent({ docs }: EditorContentProps) {
                       </Button>
                       <Button
                         onClick={() => setActiveTab('chat')}
-                        className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
                           activeTab === 'chat'
                             ? 'bg-background text-foreground shadow-xs'
                             : 'text-muted-foreground hover:text-foreground'
@@ -268,11 +269,23 @@ function EditorContent({ docs }: EditorContentProps) {
                       >
                         Team Chat
                       </Button>
+                      <Button
+                        onClick={() => setActiveTab('research')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                          activeTab === 'research'
+                            ? 'bg-background text-foreground shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Research
+                      </Button>
                     </div>
 
                     {/* Tab Content */}
                     <div className="flex-1 overflow-y-auto px-4 pb-4">
-                      {activeTab === 'comments' ? <CommentsList /> : <Chat />}
+                      {activeTab === 'comments' && <CommentsList />}
+                      {activeTab === 'chat' && <Chat />}
+                      {activeTab === 'research' && <ResearchPanel documentId={docs._id} />}
                     </div>
                   </DrawerContent>
                 </Drawer>
