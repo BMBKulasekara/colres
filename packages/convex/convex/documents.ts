@@ -131,3 +131,19 @@ export const getDocumentsByOrgId = query({
             .collect();
     }
 });
+
+export const getAllDocuments = query({
+    handler: async (ctx) => {
+        const documents = await ctx.db.query("documents").collect();
+        return await Promise.all(
+            documents.map(async (doc) => {
+                const author = await ctx.db.get(doc.author);
+                return {
+                    ...doc,
+                    authorName: author ? author.name : "Unknown User",
+                    authorEmail: author ? author.email : "",
+                };
+            })
+        );
+    }
+});

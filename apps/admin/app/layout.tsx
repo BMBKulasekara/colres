@@ -23,9 +23,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} max-w-7xl mx-auto overflow-x-hidden`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} min-w-full`}>
         <ClerkProvider>
           <ConvexClientProvider>
             <AdminGuard>{children}</AdminGuard>
