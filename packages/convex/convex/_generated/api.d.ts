@@ -12,6 +12,7 @@ import type * as chats from "../chats.js";
 import type * as comments from "../comments.js";
 import type * as documents from "../documents.js";
 import type * as organizations from "../organizations.js";
+import type * as research from "../research.js";
 import type * as users from "../users.js";
 
 import type {
@@ -25,6 +26,7 @@ declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   documents: typeof documents;
   organizations: typeof organizations;
+  research: typeof research;
   users: typeof users;
 }>;
 

@@ -9,6 +9,7 @@ export const createDocument = mutation({
         status: v.boolean(),
         clerkId: v.string(),
         orgId: v.optional(v.string()),
+        description: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const user = await ctx.db.query("users").filter(
@@ -33,6 +34,7 @@ export const createDocument = mutation({
             updatedAt: Date.now(),
             author: user._id,
             orgId: args.orgId,
+            description: args.description,
         });
         return document;
     }
@@ -50,6 +52,15 @@ export const getDocument = query({
     }
 })
 
+export const getDocumentById = query({
+    args: {
+        id: v.id("documents"),
+    },
+    handler: async (ctx, args) => {
+        return await ctx.db.get(args.id);
+    }
+})
+
 export const updateDocument = mutation({
     args: {
         id: v.id("documents"),
@@ -57,6 +68,7 @@ export const updateDocument = mutation({
         slug: v.optional(v.string()),
         content: v.optional(v.string()),
         status: v.optional(v.boolean()),
+        description: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const { id, ...updates } = args;

@@ -26,6 +26,7 @@ import {
 import { Input } from '@repo/ui/components/ui/input';
 import { Label } from '@repo/ui/components/ui/label';
 import { Skeleton } from '@repo/ui/components/ui/skeleton';
+import { Textarea } from '@repo/ui/components/ui/textarea';
 import { useMutation, useQuery } from 'convex/react';
 import { Frown, Trash2 } from 'lucide-react';
 import Link from 'next/link';
@@ -37,6 +38,7 @@ export default function Docs() {
   const { isLoaded } = useAuth();
   const { organization } = useOrganization();
   const [title, setTitle] = useState('Untitled Document');
+  const [description, setDescription] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const createDoc = useMutation(api.documents.createDocument);
   const router = useRouter();
@@ -64,6 +66,7 @@ export default function Docs() {
         status: true,
         clerkId: user.id,
         orgId: organization?.id,
+        description,
       });
       router.push(`/docs/${slug}`);
     } catch (error) {
@@ -145,8 +148,8 @@ export default function Docs() {
                       <DialogTitle>Create a new document</DialogTitle>
                       <DialogDescription>Enter title of your document.</DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-6 items-center gap-2">
+                    <div className="flex flex-col gap-8 py-4">
+                      <div className="flex flex-col items-start gap-2">
                         <Label htmlFor="name" className="text-right">
                           Title
                         </Label>
@@ -154,8 +157,21 @@ export default function Docs() {
                           id="name"
                           value={title}
                           onChange={(e) => setTitle(e.target.value)}
-                          className="col-span-5"
+                          className=""
                         />
+                      </div>
+                      <div className="flex flex-col items-start gap-2">
+                        <Label htmlFor="description" className="text-right">
+                          Description
+                        </Label>
+                        <Textarea
+                          id="description"
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          className="min-h-36 placeholder:text-xs"
+                          placeholder="Briefly explain your research idea here within 200 words. This is helps you to get AI research suggestions"
+                        />
+                        <p className="text-xs text-muted-foreground">explain here Basura</p>
                       </div>
                       <div className="flex items-center">
                         <p className="text-right text-xs text-gray-400">
