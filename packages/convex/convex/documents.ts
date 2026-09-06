@@ -3,11 +3,19 @@ import type { Doc, Id } from "./_generated/dataModel.js";
 import { type MutationCtx, mutation, query } from "./_generated/server.js";
 import {
     canAccessDocument,
+    getUserOrNull,
     requireAdmin,
     requireDocumentAccess,
     requireUser,
 } from "./lib/auth.js";
 import { applyFieldValues, slugify } from "./lib/templateContent.js";
+
+/**
+ * Slugs that would shadow a real route under /docs/. `/docs/templates` is a
+ * static page, and Next.js resolves static segments before the dynamic
+ * `[editor]` one, so a document with that slug would be unreachable.
+ */
+const RESERVED_SLUGS = new Set(["templates", "new", "settings"]);
 
 /**
  * Slugs address documents in the URL, so they must be globally unique.
@@ -17,12 +25,6 @@ import { applyFieldValues, slugify } from "./lib/templateContent.js";
  * someone else's document. The slug is now derived server-side and
  * disambiguated with a numeric suffix.
  */
-/**
- * Slugs that would shadow a real route under /docs/. `/docs/templates` is a
- * static page, and Next.js resolves static segments before the dynamic
- * `[editor]` one, so a document with that slug would be unreachable.
- */
-const RESERVED_SLUGS = new Set(["templates", "new", "settings"]);
 
 async function uniqueSlug(ctx: MutationCtx, base: string): Promise<string> {
     let root = slugify(base) || "untitled-document";
@@ -130,7 +132,11 @@ export const getDocument = query({
         slug: v.string(),
     },
     handler: async (ctx, args) => {
-        const user = await requireUser(ctx);
+        // Null rather than an error while the profile row is still syncing;
+        // the query re-runs on its own once it exists.
+        const user = await getUserOrNull(ctx);
+        if (!user) return null;
+
         const document = await ctx.db
             .query("documents")
             .withIndex("by_slug", (q) => q.eq("slug", args.slug))
@@ -147,7 +153,9 @@ export const getDocumentById = query({
         id: v.id("documents"),
     },
     handler: async (ctx, args) => {
-        const user = await requireUser(ctx);
+        const user = await getUserOrNull(ctx);
+        if (!user) return null;
+
         const document = await ctx.db.get(args.id);
         if (!document) return null;
         if (!(await canAccessDocument(ctx, document, user))) return null;
@@ -181,7 +189,10 @@ export const getAllDocumentsByUserId = query({
         orgId: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const user = await requireUser(ctx);
+        // An empty list is the honest answer while the profile row is still
+        // being created on first sign-in.
+        const user = await getUserOrNull(ctx);
+        if (!user) return [];
 
         if (args.orgId) {
             if (!(user.orgIds ?? []).includes(args.orgId)) {

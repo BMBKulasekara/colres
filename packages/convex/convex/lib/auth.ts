@@ -22,6 +22,25 @@ export async function requireCallerClerkId(ctx: Ctx): Promise<string> {
   return clerkId;
 }
 
+/**
+ * The signed-in caller's row in `users`, or null when their profile has not
+ * been synced yet.
+ *
+ * On a first sign-in the client mirrors the Clerk profile into `users` from an
+ * effect, while pages start querying immediately. Read paths should treat that
+ * window as "no data yet" and let the query re-run reactively once the row
+ * lands, rather than surfacing an error to a user who is in fact signed in.
+ */
+export async function getUserOrNull(ctx: Ctx): Promise<Doc<"users"> | null> {
+  const clerkId = await getCallerClerkId(ctx);
+  if (!clerkId) return null;
+
+  return await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+    .first();
+}
+
 /** The signed-in caller's row in `users`. Throws if absent or not synced yet. */
 export async function requireUser(ctx: Ctx): Promise<Doc<"users">> {
   const clerkId = await requireCallerClerkId(ctx);

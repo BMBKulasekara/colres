@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel.js";
 import { type QueryCtx, mutation, query } from "./_generated/server.js";
-import { requireAdmin, requireUser } from "./lib/auth.js";
+import { getUserOrNull, requireAdmin } from "./lib/auth.js";
 import { slugify } from "./lib/templateContent.js";
 import {
     bibToolValidator,
@@ -70,7 +70,10 @@ async function withThumbnailUrl(ctx: QueryCtx, template: Doc<"templates">) {
 export const listCategories = query({
     args: {},
     handler: async (ctx) => {
-        await requireUser(ctx);
+        // Empty rather than an error while the profile row is still syncing on
+        // first sign-in; the query re-runs once it exists.
+        if (!(await getUserOrNull(ctx))) return [];
+
         const categories = await ctx.db.query("templateCategories").collect();
         return categories
             .filter((category) => category.isActive)
@@ -90,7 +93,8 @@ export const listTemplates = query({
         orgId: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        const user = await requireUser(ctx);
+        const user = await getUserOrNull(ctx);
+        if (!user) return [];
 
         const published = await ctx.db
             .query("templates")
@@ -132,7 +136,9 @@ export const listTemplates = query({
 export const getTemplateBySlug = query({
     args: { slug: v.string() },
     handler: async (ctx, args) => {
-        const user = await requireUser(ctx);
+        const user = await getUserOrNull(ctx);
+        if (!user) return null;
+
         const template = await ctx.db
             .query("templates")
             .withIndex("by_slug", (q) => q.eq("slug", args.slug))
@@ -149,7 +155,9 @@ export const getTemplateBySlug = query({
 export const getTemplateById = query({
     args: { id: v.id("templates") },
     handler: async (ctx, args) => {
-        const user = await requireUser(ctx);
+        const user = await getUserOrNull(ctx);
+        if (!user) return null;
+
         const template = await ctx.db.get(args.id);
         if (!template) return null;
         if (template.status !== "published" && user.role !== "admin") return null;
