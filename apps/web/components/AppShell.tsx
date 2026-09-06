@@ -1,7 +1,8 @@
 'use client';
 
-import { ClerkProvider } from '@clerk/nextjs';
-import { ConvexProvider, ConvexReactClient } from 'convex/react';
+import { ClerkProvider, useAuth } from '@clerk/nextjs';
+import { ConvexReactClient } from 'convex/react';
+import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { useMemo } from 'react';
 import { AuthNav } from './AuthNav';
 import { ClerkConvexSync } from './ClerkConvexSync';
@@ -23,7 +24,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ClerkProvider>
-      <ConvexProvider client={convex}>
+      {/* Forwards the Clerk JWT to Convex so backend functions can verify the caller. */}
+      <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
         <header
           style={{
             display: 'flex',
@@ -39,7 +41,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <ClerkConvexSync convex={convex} />
         {children}
-      </ConvexProvider>
+      </ConvexProviderWithClerk>
     </ClerkProvider>
   );
 }

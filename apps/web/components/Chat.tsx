@@ -42,12 +42,11 @@ export function Chat() {
 
     sendMessage(text, name, avatar, self.id);
 
+    // Sender details are resolved from the session on the server, so only the
+    // message body is sent.
     void sendConvexMessage({
       documentId: room.id,
       text,
-      senderId: self.id,
-      senderName: name,
-      senderAvatar: avatar,
     });
 
     setInputText('');

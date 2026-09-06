@@ -24,12 +24,13 @@ function ClerkConvexSyncContent({ convex }: { convex: ConvexReactClient }) {
 
     const computedName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
 
+    // The Clerk id and the role are no longer sent: Convex reads the id from
+    // the verified token, and accepting a role from the client meant anyone
+    // could make themselves an admin.
     void convex.mutation(api.users.upsert, {
-      clerkId: user.id,
       name: user.fullName ?? (computedName || 'Anonymous'),
       email: user.primaryEmailAddress?.emailAddress ?? '',
       imageUrl: user.imageUrl ?? '',
-      role: 'user',
     });
   }, [convex, isLoaded, isSignedIn, user]);
 
@@ -58,7 +59,6 @@ function ClerkConvexSyncContent({ convex }: { convex: ConvexReactClient }) {
     lastSyncUserOrgIdsRef.current = orgIdsStr;
 
     void convex.mutation(api.users.syncUserOrganizations, {
-      clerkId: user.id,
       orgIds: userOrgIds,
     });
   }, [convex, isLoaded, isSignedIn, user, listLoaded, userMemberships.data]);

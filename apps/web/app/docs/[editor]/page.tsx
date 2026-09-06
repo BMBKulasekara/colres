@@ -18,6 +18,7 @@ import { Check, Loader, MessageSquare } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Chat } from '../../../components/Chat';
+import { ReferencesPanel } from '../../../components/ReferencesPanel';
 import { ResearchPanel } from '../../../components/ResearchPanel';
 import Tiptap from '../../../components/TipTap';
 import { Collaborators } from './Collaborators';
@@ -91,8 +92,10 @@ function EditorContent({ docs }: EditorContentProps) {
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
-  const [activeTab, setActiveTab] = useState<'comments' | 'chat' | 'research'>('comments');
-  const [_, setEditorInstance] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'comments' | 'chat' | 'research' | 'references'>(
+    'comments'
+  );
+  const [editorInstance, setEditorInstance] = useState<any>(null);
   const isMobile = useIsMobile();
 
   const updateDoc = useMutation(api.documents.updateDocument);
@@ -279,6 +282,16 @@ function EditorContent({ docs }: EditorContentProps) {
                       >
                         Research
                       </Button>
+                      <Button
+                        onClick={() => setActiveTab('references')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                          activeTab === 'references'
+                            ? 'bg-background text-foreground shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Refs
+                      </Button>
                     </div>
 
                     {/* Tab Content */}
@@ -286,6 +299,18 @@ function EditorContent({ docs }: EditorContentProps) {
                       {activeTab === 'comments' && <CommentsList />}
                       {activeTab === 'chat' && <Chat />}
                       {activeTab === 'research' && <ResearchPanel documentId={docs._id} />}
+                      {activeTab === 'references' && (
+                        <ReferencesPanel
+                          documentId={docs._id}
+                          citationStyle={docs.templateSnapshot?.citationStyle ?? 'numeric'}
+                          onInsertCitation={
+                            editorInstance
+                              ? (key: string) =>
+                                  editorInstance.chain().focus().insertCitation(key).run()
+                              : undefined
+                          }
+                        />
+                      )}
                     </div>
                   </DrawerContent>
                 </Drawer>
@@ -297,7 +322,7 @@ function EditorContent({ docs }: EditorContentProps) {
                 isScrolled ? 'text-[10px]' : 'text-xs'
               }`}
             >
-              Rich text document editor • Draft
+              {docs.templateSnapshot?.name ?? 'Rich text document'} • Draft
             </p>
           </div>
         </div>

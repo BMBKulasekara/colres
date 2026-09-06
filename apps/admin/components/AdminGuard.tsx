@@ -28,7 +28,6 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
         const computedName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
 
         await upsertUser({
-          clerkId: user.id,
           name: user.fullName ?? (computedName || 'Anonymous'),
           email: user.primaryEmailAddress?.emailAddress ?? '',
           imageUrl: user.imageUrl ?? '',

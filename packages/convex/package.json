@@ -15,7 +15,12 @@
   "dependencies": {
     "convex": "^1.19.2"
   },
+  "peerDependencies": {
+    "@clerk/nextjs": "^7.5.20",
+    "react": "^19.0.0"
+  },
   "devDependencies": {
+    "@clerk/nextjs": "^7.5.20",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
     "@types/react": "^19.0.8",

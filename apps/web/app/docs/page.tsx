@@ -13,67 +13,25 @@ import {
   AlertDialogTrigger,
 } from '@repo/ui/components/ui/alert-dialog';
 import { Button } from '@repo/ui/components/ui/button';
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@repo/ui/components/ui/dialog';
-import { Input } from '@repo/ui/components/ui/input';
-import { Label } from '@repo/ui/components/ui/label';
 import { Skeleton } from '@repo/ui/components/ui/skeleton';
-import { Textarea } from '@repo/ui/components/ui/textarea';
 import { useMutation, useQuery } from 'convex/react';
-import { Frown, Trash2 } from 'lucide-react';
+import { Frown, LayoutGrid, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { CreateDocumentWizard } from '../../components/templates/CreateDocumentWizard';
 
 export default function Docs() {
   const { user } = useUser();
   const { isLoaded } = useAuth();
   const { organization } = useOrganization();
-  const [title, setTitle] = useState('Untitled Document');
-  const [description, setDescription] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const createDoc = useMutation(api.documents.createDocument);
-  const router = useRouter();
 
+  // The Clerk id is no longer sent: Convex reads the caller's identity from
+  // the verified token, so it cannot be spoofed by passing someone else's.
   const documents = useQuery(
     api.documents.getAllDocumentsByUserId,
-    user?.id ? { clerkId: user.id, orgId: organization?.id } : 'skip'
+    user?.id ? { orgId: organization?.id } : 'skip'
   );
 
-  const firstName = user?.firstName?.toLowerCase().replace(/\s+/g, '-') || 'user';
-  const slug = `${firstName}-doc-${title.toLowerCase().replace(/\s+/g, '-')}`;
-
   const deleteDoc = useMutation(api.documents.deleteDocumentById);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user?.id || isCreating) return;
-
-    setIsCreating(true);
-    try {
-      await createDoc({
-        title,
-        slug,
-        content: '',
-        status: true,
-        clerkId: user.id,
-        orgId: organization?.id,
-        description,
-      });
-      router.push(`/docs/${slug}`);
-    } catch (error) {
-      console.error('Failed to create document:', error);
-      setIsCreating(false);
-    }
-  };
 
   const handleDelete = async (id: any) => {
     try {
@@ -133,65 +91,25 @@ export default function Docs() {
                 </p>
               </div>
 
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    size="lg"
-                    className="shadow-xs hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5 font-semibold"
-                  >
-                    Create Document
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <form onSubmit={handleCreate}>
-                    <DialogHeader>
-                      <DialogTitle>Create a new document</DialogTitle>
-                      <DialogDescription>Enter title of your document.</DialogDescription>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-8 py-4">
-                      <div className="flex flex-col items-start gap-2">
-                        <Label htmlFor="name" className="text-right">
-                          Title
-                        </Label>
-                        <Input
-                          id="name"
-                          value={title}
-                          onChange={(e) => setTitle(e.target.value)}
-                          className=""
-                        />
-                      </div>
-                      <div className="flex flex-col items-start gap-2">
-                        <Label htmlFor="description" className="text-right">
-                          Description
-                        </Label>
-                        <Textarea
-                          id="description"
-                          value={description}
-                          onChange={(e) => setDescription(e.target.value)}
-                          className="min-h-36 placeholder:text-xs"
-                          placeholder="Briefly explain your research idea here within 200 words. This is helps you to get AI research suggestions"
-                        />
-                        <p className="text-xs text-muted-foreground">explain here Basura</p>
-                      </div>
-                      <div className="flex items-center">
-                        <p className="text-right text-xs text-gray-400">
-                          your document slug will be {slug}
-                        </p>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <DialogClose asChild>
-                        <Button type="button" variant="outline">
-                          Cancel
-                        </Button>
-                      </DialogClose>
-                      <Button type="submit" disabled={isCreating}>
-                        {isCreating ? 'Creating...' : 'Create'}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
+              <div className="flex items-center gap-2">
+                <Button asChild variant="outline" size="lg" className="font-semibold">
+                  <Link href="/docs/templates">
+                    <LayoutGrid className="h-4 w-4 mr-1.5" />
+                    Browse templates
+                  </Link>
+                </Button>
+
+                <CreateDocumentWizard
+                  trigger={
+                    <Button
+                      size="lg"
+                      className="shadow-xs hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5 font-semibold"
+                    >
+                      Create Document
+                    </Button>
+                  }
+                />
+              </div>
             </div>
 
             {documents.length === 0 ? (
@@ -230,12 +148,20 @@ export default function Docs() {
                     </div>
 
                     <div className="flex items-center justify-between mt-6 pt-4 border-t border-border/40 text-[11px] font-medium text-muted-foreground z-10">
-                      <span className="pointer-events-none">
+                      <span className="pointer-events-none flex items-center gap-1.5 min-w-0">
                         {new Date(doc.updatedAt).toLocaleDateString(undefined, {
                           month: 'short',
                           day: 'numeric',
                           year: 'numeric',
                         })}
+                        {doc.templateSnapshot && (
+                          <span
+                            className="truncate text-primary/80 font-semibold"
+                            title={`Created from the ${doc.templateSnapshot.name} template`}
+                          >
+                            · {doc.templateSnapshot.name}
+                          </span>
+                        )}
                       </span>
                       <div className="flex items-center gap-2 pointer-events-auto">
                         <span className="px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground pointer-events-none">

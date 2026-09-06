@@ -11,8 +11,16 @@
 import type * as chats from "../chats.js";
 import type * as comments from "../comments.js";
 import type * as documents from "../documents.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as lib_citations from "../lib/citations.js";
+import type * as lib_templateCatalog from "../lib/templateCatalog.js";
+import type * as lib_templateContent from "../lib/templateContent.js";
+import type * as lib_templateTypes from "../lib/templateTypes.js";
 import type * as organizations from "../organizations.js";
+import type * as references from "../references.js";
 import type * as research from "../research.js";
+import type * as seedTemplates from "../seedTemplates.js";
+import type * as templates from "../templates.js";
 import type * as users from "../users.js";
 
 import type {
@@ -25,8 +33,16 @@ declare const fullApi: ApiFromModules<{
   chats: typeof chats;
   comments: typeof comments;
   documents: typeof documents;
+  "lib/auth": typeof lib_auth;
+  "lib/citations": typeof lib_citations;
+  "lib/templateCatalog": typeof lib_templateCatalog;
+  "lib/templateContent": typeof lib_templateContent;
+  "lib/templateTypes": typeof lib_templateTypes;
   organizations: typeof organizations;
+  references: typeof references;
   research: typeof research;
+  seedTemplates: typeof seedTemplates;
+  templates: typeof templates;
   users: typeof users;
 }>;
 

@@ -1,8 +1,18 @@
 "use client";
 
-import { ReactNode, useState } from "react";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { useAuth } from "@clerk/nextjs";
+import { ConvexReactClient } from "convex/react";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { type ReactNode, useState } from "react";
 
+/**
+ * Convex client bound to the Clerk session.
+ *
+ * `ConvexProviderWithClerk` forwards the Clerk JWT on every request, which is
+ * what lets Convex functions call `ctx.auth.getUserIdentity()` instead of
+ * trusting a `clerkId` passed in as an argument. Must be rendered inside a
+ * `<ClerkProvider>`.
+ */
 export function ConvexClientProvider({
   children,
   convexUrl,
@@ -11,16 +21,15 @@ export function ConvexClientProvider({
   convexUrl?: string;
 }) {
   const url = convexUrl ?? process.env.NEXT_PUBLIC_CONVEX_URL;
-  
+
   const [convex] = useState(() => {
     if (!url) {
-      // Return a dummy client or throw error in browser, but handle SSR gracefully.
-      // If we throw here, Server Side Rendering might crash if env var is missing during build.
-      // But standard dev setups will have the env var. Let's write a warning or throw a clear error.
+      // Throw in the browser, where a missing URL is always a misconfiguration.
+      // During SSR/build, fall back so the render does not crash outright.
       if (typeof window !== "undefined") {
         throw new Error(
           "NEXT_PUBLIC_CONVEX_URL environment variable is missing. " +
-          "Please check your .env.local file in the application directory."
+            "Please check your .env.local file in the application directory."
         );
       }
       return new ConvexReactClient("https://unknown-convex-url.convex.cloud");
@@ -28,5 +37,9 @@ export function ConvexClientProvider({
     return new ConvexReactClient(url);
   });
 
-  return <ConvexProvider client={convex}>{children}</ConvexProvider>;
+  return (
+    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+      {children}
+    </ConvexProviderWithClerk>
+  );
 }

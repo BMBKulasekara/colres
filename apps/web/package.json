@@ -19,6 +19,7 @@
     "@liveblocks/react-ui": "^3.23.0",
     "@repo/convex": "workspace:*",
     "@repo/ui": "workspace:*",
+    "@tiptap/core": "3.28.0",
     "@tiptap/extension-bold": "^3.29.2",
     "@tiptap/extension-link": "^3.28.0",
     "@tiptap/extension-placeholder": "^3.28.0",

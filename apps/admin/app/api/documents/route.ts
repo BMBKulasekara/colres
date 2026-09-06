@@ -1,21 +1,12 @@
-import { auth } from '@clerk/nextjs/server';
 import { api } from '@repo/convex/_generated/api';
-import { ConvexHttpClient } from 'convex/browser';
 import { NextResponse } from 'next/server';
-
-function getConvexClient() {
-  const url = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (!url) throw new Error('NEXT_PUBLIC_CONVEX_URL is not defined');
-  return new ConvexHttpClient(url);
-}
+import { getAdminConvexClient } from '../../../lib/convexServer';
 
 async function verifyAdmin() {
-  const { userId } = await auth();
-  if (!userId) {
-    return { error: 'Unauthorized', status: 401 };
-  }
+  const result = await getAdminConvexClient();
+  if ('error' in result) return result;
 
-  const convex = getConvexClient();
+  const { convex, userId } = result;
   const user = await convex.query(api.users.getByClerkId, { clerkId: userId });
   if (!user || user.role !== 'admin') {
     return { error: 'Forbidden', status: 403 };
@@ -54,7 +45,9 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Document ID is required' }, { status: 400 });
     }
 
-    const updatedDoc = await convex.mutation(api.documents.updateDocument, {
+    // Admins are not necessarily members of the owning organization, so this
+    // uses the admin-scoped mutation rather than the collaborator one.
+    const updatedDoc = await convex.mutation(api.documents.adminUpdateDocument, {
       id,
       title,
       slug,
@@ -84,7 +77,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Document ID is required' }, { status: 400 });
     }
 
-    const deletedDoc = await convex.mutation(api.documents.deleteDocumentById, {
+    const deletedDoc = await convex.mutation(api.documents.adminDeleteDocument, {
       id: id as any,
     });
 
