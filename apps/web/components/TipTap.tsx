@@ -36,6 +36,7 @@ import {
   Unlink,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Citation } from './tiptap/CitationExtension';
 
 interface TipTapEditorProps {
   isPageScrolled?: boolean;
@@ -65,6 +66,10 @@ export default function TipTapEditor({
           levels: [1, 2, 3],
         },
       }),
+      // Must stay registered even for documents with no citations: without it
+      // TipTap cannot parse existing `<span data-citation>` markers and would
+      // silently strip them on load.
+      Citation,
       Underline,
       Link.configure({
         openOnClick: false,

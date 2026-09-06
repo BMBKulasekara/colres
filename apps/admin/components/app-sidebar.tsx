@@ -20,6 +20,7 @@ import {
   IconFolder,
   IconHelp,
   IconInnerShadowTop,
+  IconLayoutGrid,
   IconListDetails,
   IconReport,
   IconSearch,
@@ -48,6 +49,11 @@ const data = {
       title: 'Documents',
       url: '/documents',
       icon: IconFileDescription,
+    },
+    {
+      title: 'Templates',
+      url: '/templates',
+      icon: IconLayoutGrid,
     },
     {
       title: 'Lifecycle',

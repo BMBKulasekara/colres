@@ -1,4 +1,3 @@
-import { ConvexClientProvider } from '@repo/convex/provider';
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
@@ -25,9 +24,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <ConvexClientProvider>{children}</ConvexClientProvider>
-      </body>
+      {/*
+        No Convex provider here: this is a public marketing site that makes no
+        Convex calls, and the shared provider is now bound to a Clerk session
+        (which this app has no keys for). Every Convex function requires a
+        verified identity, so an anonymous client would be useless anyway.
+      */}
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>{children}</body>
     </html>
   );
 }
