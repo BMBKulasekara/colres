@@ -6,13 +6,17 @@ import { Textarea } from '@repo/ui/components/ui/textarea';
 import { useAction, useMutation, useQuery } from 'convex/react';
 import {
   Award,
+  Bookmark,
   BookOpen,
   Check,
   Edit2,
   ExternalLink,
   FileText,
   Loader2,
+  RefreshCw,
   Search,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -20,26 +24,17 @@ interface ResearchPanelProps {
   documentId: any; // Id<"documents">
 }
 
-interface Paper {
-  id: string;
-  title: string;
-  url: string;
-  abstract: string;
-  authors: string[];
-  year: number;
-  citationCount: number;
-}
-
 export function ResearchPanel({ documentId }: ResearchPanelProps) {
   const document = useQuery(api.documents.getDocumentById, { id: documentId });
+  const suggestions = useQuery(api.research.getSuggestions, { documentId });
   const updateDocument = useMutation(api.documents.updateDocument);
+  const setPaperStatus = useMutation(api.research.setPaperStatus);
   const suggestPapers = useAction(api.research.suggestPapers);
 
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [descriptionInput, setDescriptionInput] = useState('');
   const [isSavingDescription, setIsSavingDescription] = useState(false);
 
-  const [papers, setPapers] = useState<Paper[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [expandedPaperId, setExpandedPaperId] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -82,17 +77,140 @@ export function ResearchPanel({ documentId }: ResearchPanelProps) {
     setIsSearching(true);
     setSearchError(null);
     try {
-      const results = await suggestPapers({ documentId });
-      setPapers(results || []);
-      if (!results || results.length === 0) {
-        setSearchError('No papers found matching the description.');
+      const result = await suggestPapers({ documentId });
+      if (!result.ok) {
+        setSearchError(result.error);
       }
     } catch (err) {
       console.error('Failed to suggest papers:', err);
-      setSearchError('Error fetching research papers. Please try again.');
+      setSearchError('Something went wrong fetching papers. Please try again.');
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const papers = suggestions?.papers ?? [];
+  const savedPapers = papers.filter((p) => p.status === 'saved');
+  const suggestedPapers = papers.filter((p) => p.status === 'suggested');
+  const hasResults = papers.length > 0;
+
+  const renderPaper = (paper: (typeof papers)[number]) => {
+    const isExpanded = expandedPaperId === paper.id;
+    const isSaved = paper.status === 'saved';
+    const readUrl = paper.openAccessUrl || paper.url;
+
+    return (
+      <div
+        key={paper.id}
+        className="bg-background border border-border hover:border-primary/40 rounded-xl p-3.5 transition-all duration-200 shadow-2xs hover:shadow-xs flex flex-col gap-2"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <h4 className="text-xs font-bold text-foreground leading-snug line-clamp-2">
+            {paper.title}
+          </h4>
+          <a
+            href={readUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-primary transition-colors mt-0.5 shrink-0"
+            title={paper.openAccessUrl ? 'Open full text (free)' : 'Open paper'}
+          >
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+
+        {/* Why this paper is relevant to this document */}
+        {paper.reason && (
+          <div className="flex gap-1.5 items-start bg-primary/5 border border-primary/15 rounded-lg px-2.5 py-2">
+            <Sparkles className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+            <p className="text-[11px] text-foreground/80 leading-relaxed">{paper.reason}</p>
+          </div>
+        )}
+
+        {/* Meta data */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-muted-foreground">
+          <span className="truncate max-w-[150px]">
+            {paper.authors.length > 0
+              ? paper.authors.slice(0, 2).join(', ') + (paper.authors.length > 2 ? ' et al.' : '')
+              : 'Unknown Authors'}
+          </span>
+          <span className="w-1 h-1 bg-border rounded-full" />
+          <span>{paper.year || 'N/A'}</span>
+          {paper.citationCount > 0 && (
+            <>
+              <span className="w-1 h-1 bg-border rounded-full" />
+              <span className="flex items-center gap-0.5 text-primary">
+                <Award className="h-3 w-3" />
+                {paper.citationCount}
+              </span>
+            </>
+          )}
+          {paper.openAccessUrl && (
+            <>
+              <span className="w-1 h-1 bg-border rounded-full" />
+              <span className="text-emerald-600 dark:text-emerald-500">Open access</span>
+            </>
+          )}
+        </div>
+
+        {paper.venue && (
+          <p className="text-[10px] text-muted-foreground/70 italic truncate">{paper.venue}</p>
+        )}
+
+        {/* Abstract preview / expander */}
+        {paper.abstract && (
+          <div className="space-y-1">
+            <p
+              className={`text-[11px] text-muted-foreground leading-relaxed ${
+                isExpanded ? '' : 'line-clamp-2'
+              }`}
+            >
+              {paper.abstract}
+            </p>
+            <button
+              type="button"
+              onClick={() => setExpandedPaperId(isExpanded ? null : paper.id)}
+              className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <BookOpen className="h-2.5 w-2.5" />
+              {isExpanded ? 'Hide Abstract' : 'Read Abstract'}
+            </button>
+          </div>
+        )}
+
+        {/* Save / dismiss */}
+        <div className="flex items-center gap-1.5 pt-1 border-t border-border/50">
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() =>
+              setPaperStatus({
+                documentId,
+                paperId: paper.id,
+                status: isSaved ? 'suggested' : 'saved',
+              })
+            }
+            className={`flex items-center gap-1 text-[10px] font-bold ${
+              isSaved ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <Bookmark className={`h-3 w-3 ${isSaved ? 'fill-current' : ''}`} />
+            {isSaved ? 'Saved' : 'Save'}
+          </Button>
+          {!isSaved && (
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setPaperStatus({ documentId, paperId: paper.id, status: 'dismissed' })}
+              className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground hover:text-destructive"
+            >
+              <X className="h-3 w-3" />
+              Dismiss
+            </Button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -177,94 +295,47 @@ export function ResearchPanel({ documentId }: ResearchPanelProps) {
             </>
           ) : (
             <>
-              <Search className="h-3.5 w-3.5" />
-              Suggest Research Papers
+              {hasResults ? (
+                <RefreshCw className="h-3.5 w-3.5" />
+              ) : (
+                <Search className="h-3.5 w-3.5" />
+              )}
+              {hasResults ? 'Refresh Suggestions' : 'Suggest Research Papers'}
             </>
           )}
         </Button>
       </div>
 
-      {/* Error or Empty state */}
+      {/* Description changed since last generation */}
+      {suggestions?.isStale && !isSearching && (
+        <div className="text-[11px] text-center px-3 py-2 bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-500 rounded-xl">
+          Your description changed. Refresh to update these suggestions.
+        </div>
+      )}
+
       {searchError && (
         <div className="text-center p-4 bg-destructive/10 border border-destructive/20 text-destructive text-xs rounded-xl">
           {searchError}
         </div>
       )}
 
-      {/* Papers listing */}
-      {papers.length > 0 && (
-        <div className="space-y-4 animate-in fade-in duration-300">
+      {/* Saved papers */}
+      {savedPapers.length > 0 && (
+        <div className="space-y-3">
           <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-            Suggested Papers ({papers.length})
+            Saved ({savedPapers.length})
           </div>
+          <div className="space-y-3">{savedPapers.map(renderPaper)}</div>
+        </div>
+      )}
 
-          <div className="space-y-3">
-            {papers.map((paper) => {
-              const isExpanded = expandedPaperId === paper.id;
-              return (
-                <div
-                  key={paper.id}
-                  className="bg-background border border-border hover:border-primary/40 rounded-xl p-3.5 transition-all duration-200 shadow-2xs hover:shadow-xs flex flex-col gap-2"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <h4 className="text-xs font-bold text-foreground leading-snug line-clamp-2">
-                      {paper.title}
-                    </h4>
-                    <a
-                      href={paper.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-muted-foreground hover:text-primary transition-colors mt-0.5 shrink-0"
-                      title="Open Paper URL"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-
-                  {/* Meta data */}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-semibold text-muted-foreground">
-                    <span className="truncate max-w-[150px]">
-                      {paper.authors.length > 0
-                        ? paper.authors.slice(0, 2).join(', ') +
-                          (paper.authors.length > 2 ? ' et al.' : '')
-                        : 'Unknown Authors'}
-                    </span>
-                    <span className="w-1 h-1 bg-border rounded-full" />
-                    <span>{paper.year || 'N/A'}</span>
-                    {paper.citationCount > 0 && (
-                      <>
-                        <span className="w-1 h-1 bg-border rounded-full" />
-                        <span className="flex items-center gap-0.5 text-primary">
-                          <Award className="h-3 w-3" />
-                          {paper.citationCount} Citations
-                        </span>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Abstract preview / expander */}
-                  {paper.abstract && (
-                    <div className="mt-1 space-y-1">
-                      <p
-                        className={`text-[11px] text-muted-foreground leading-relaxed transition-all duration-300 ${
-                          isExpanded ? '' : 'line-clamp-2'
-                        }`}
-                      >
-                        {paper.abstract}
-                      </p>
-                      <Button
-                        onClick={() => setExpandedPaperId(isExpanded ? null : paper.id)}
-                        className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <BookOpen className="h-2.5 w-2.5" />
-                        {isExpanded ? 'Hide Abstract' : 'Read Abstract'}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+      {/* Suggested papers */}
+      {suggestedPapers.length > 0 && (
+        <div className="space-y-3">
+          <div className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            Suggested ({suggestedPapers.length})
           </div>
+          <div className="space-y-3">{suggestedPapers.map(renderPaper)}</div>
         </div>
       )}
     </div>
