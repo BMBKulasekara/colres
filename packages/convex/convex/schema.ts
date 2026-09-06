@@ -49,6 +49,36 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_document_id", ["documentId"]),
 
+  paperSuggestions: defineTable({
+    documentId: v.id("documents"),
+    // Hash of the title + description the suggestions were generated from, so
+    // the UI can tell the author when their context has drifted.
+    contextHash: v.string(),
+    queries: v.array(v.string()),
+    papers: v.array(
+      v.object({
+        id: v.string(),
+        title: v.string(),
+        url: v.string(),
+        abstract: v.string(),
+        authors: v.array(v.string()),
+        year: v.number(),
+        citationCount: v.number(),
+        venue: v.optional(v.string()),
+        doi: v.optional(v.string()),
+        openAccessUrl: v.optional(v.string()),
+        // One line from the model on why this paper fits the document.
+        reason: v.string(),
+        status: v.union(
+          v.literal("suggested"),
+          v.literal("saved"),
+          v.literal("dismissed")
+        ),
+      })
+    ),
+    generatedAt: v.number(),
+  }).index("by_document_id", ["documentId"]),
+
   comments: defineTable({
     documentId: v.id("documents"),
     threadId: v.string(),
