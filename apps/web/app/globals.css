@@ -144,6 +144,100 @@ body {
   }
 }
 
+/*
+ * Paged view — the Word-like page simulation.
+ *
+ * The pages themselves are painted as a repeating gradient on the canvas:
+ * one opaque page band followed by a transparent gutter. Because the gutters
+ * are genuinely transparent, a single `drop-shadow` filter on the canvas
+ * produces a separate shadow around every page for free, with no per-page
+ * element to position. The pagination extension guarantees content always
+ * starts at a page boundary, so the gradient and the text stay in step.
+ *
+ * All measurements come from `lib/pageGeometry.ts` via inline custom
+ * properties, so screen and print never disagree about page size.
+ */
+.page-canvas-backdrop {
+  background: var(--muted);
+  padding: 1.5rem 1rem 2.5rem;
+  overflow-x: auto;
+  border-bottom-left-radius: 0.5rem;
+  border-bottom-right-radius: 0.5rem;
+}
+
+.page-canvas {
+  position: relative;
+  margin: 0 auto;
+  width: var(--page-width);
+  background-image: repeating-linear-gradient(to bottom,
+      #ffffff 0,
+      #ffffff var(--page-height),
+      transparent var(--page-height),
+      transparent calc(var(--page-height) + var(--page-gap)));
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.2));
+}
+
+.page-canvas .tiptap {
+  padding: var(--page-margin);
+  min-height: 0;
+  border-radius: 0;
+  font-size: var(--page-font-size);
+
+  /* Paper stays white in either theme, so the ink has to stay dark with it. */
+  color: #111827;
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: #111827;
+  }
+
+  blockquote {
+    color: #4b5563;
+  }
+}
+
+.page-canvas__label {
+  position: absolute;
+  right: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Author-inserted hard page break */
+.tiptap .page-break {
+  position: relative;
+  height: 0;
+  margin: 1.25rem 0;
+  border-top: 2px dashed var(--border);
+}
+
+.tiptap .page-break::after {
+  content: "Page break";
+  position: absolute;
+  top: -0.6em;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 0.5rem;
+  background: var(--background);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.page-canvas .tiptap .page-break::after {
+  background: #ffffff;
+}
+
 /* Temporarily hide the Liveblocks branding badge during local development */
 a[href*="liveblocks.io"] {
   display: none !important;

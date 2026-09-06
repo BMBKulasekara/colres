@@ -336,6 +336,8 @@ function EditorContent({ docs }: EditorContentProps) {
             initialContent={docs.content}
             onChange={handleEditorChange}
             onEditorReady={setEditorInstance}
+            documentTitle={title}
+            classOptions={docs.templateSnapshot?.classOptions}
           />
         </div>
       </div>

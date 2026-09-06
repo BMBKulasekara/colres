@@ -26,8 +26,10 @@ import {
   Link2,
   List,
   ListOrdered,
+  Printer,
   Quote,
   Redo2,
+  SeparatorHorizontal,
   Strikethrough,
   Terminal,
   Type,
@@ -35,14 +37,34 @@ import {
   Undo2,
   Unlink,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from 'react';
+import { getPageGeometry, PAGE_GAP_PX } from '../lib/pageGeometry';
 import { Citation } from './tiptap/CitationExtension';
+import { PageBreak } from './tiptap/PageBreakNode';
+import { Pagination, setPagedView } from './tiptap/PaginationExtension';
+import { printDocument } from './tiptap/printDocument';
+
+/** Paged view is a personal reading preference, so it is remembered per browser. */
+const PAGED_VIEW_STORAGE_KEY = 'colres:editor:paged-view';
+
+/**
+ * The paged view lays the document out as the browser would print it, which is
+ * not how the publisher's LaTeX class will set it — different fonts, different
+ * measure, and two columns for the conference formats. It is a writing aid, so
+ * it says so rather than letting an author trust it for a page limit.
+ */
+const APPROXIMATE_LAYOUT_NOTE =
+  'Approximate layout. Final pagination is decided when the document is compiled from its template.';
 
 interface TipTapEditorProps {
   isPageScrolled?: boolean;
   initialContent?: string;
   onChange?: (html: string) => void;
   onEditorReady?: (editor: any) => void;
+  /** Used as the print job's document title. */
+  documentTitle?: string;
+  /** `templateSnapshot.classOptions`, which decide page size and body size. */
+  classOptions?: readonly string[];
 }
 
 export default function TipTapEditor({
@@ -50,8 +72,32 @@ export default function TipTapEditor({
   initialContent,
   onChange,
   onEditorReady,
+  documentTitle,
+  classOptions,
 }: TipTapEditorProps) {
   const [isEditable, setIsEditable] = useState(true);
+  const [isPaged, setIsPaged] = useState(false);
+  const [pageCount, setPageCount] = useState(1);
+
+  const geometry = useMemo(() => getPageGeometry(classOptions), [classOptions]);
+
+  /** Page pitch: one page plus the gutter beneath it. */
+  const pagePeriodPx = geometry.pageHeightPx + PAGE_GAP_PX;
+
+  // Handed to CSS as custom properties so the stylesheet paints the pages and
+  // the extension measures them from one set of numbers.
+  const canvasStyle = useMemo(
+    () =>
+      ({
+        '--page-width': `${geometry.pageWidthPx}px`,
+        '--page-height': `${geometry.pageHeightPx}px`,
+        '--page-gap': `${PAGE_GAP_PX}px`,
+        '--page-margin': `${geometry.marginPx}px`,
+        '--page-font-size': `${geometry.bodyFontPx}px`,
+        minHeight: `${pageCount * pagePeriodPx - PAGE_GAP_PX}px`,
+      }) as CSSProperties,
+    [geometry, pageCount, pagePeriodPx]
+  );
 
   const liveblocks = useLiveblocksExtension({
     initialContent,
@@ -70,6 +116,12 @@ export default function TipTapEditor({
       // TipTap cannot parse existing `<span data-citation>` markers and would
       // silently strip them on load.
       Citation,
+      PageBreak,
+      Pagination.configure({
+        geometry,
+        gapPx: PAGE_GAP_PX,
+        onPagesChange: setPageCount,
+      }),
       Underline,
       Link.configure({
         openOnClick: false,
@@ -99,6 +151,35 @@ export default function TipTapEditor({
       onEditorReady?.(editor);
     }
   }, [editor, onEditorReady]);
+
+  // Restored after mount rather than during render: reading localStorage while
+  // rendering would make the server and client markup disagree.
+  useEffect(() => {
+    try {
+      setIsPaged(window.localStorage.getItem(PAGED_VIEW_STORAGE_KEY) === 'true');
+    } catch {
+      // Storage can throw outright in private browsing; the default is fine.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!editor) return;
+    setPagedView(editor, isPaged);
+    try {
+      window.localStorage.setItem(PAGED_VIEW_STORAGE_KEY, String(isPaged));
+    } catch {
+      // Not being able to remember the preference is not worth failing over.
+    }
+  }, [editor, isPaged]);
+
+  const handlePrint = useCallback(() => {
+    if (!editor) return;
+    printDocument({
+      title: documentTitle?.trim() || 'Untitled Document',
+      contentHtml: editor.getHTML(),
+      geometry,
+    });
+  }, [editor, documentTitle, geometry]);
 
   const { isBold, isItalic, isUnderline, isStrikethrough, isCode } = useEditorState({
     editor,
@@ -177,12 +258,50 @@ export default function TipTapEditor({
           >
             Editable Mode
           </label>
+
+          <div className="w-px h-4 bg-border mx-1" />
+
+          <input
+            type="checkbox"
+            id="paged-view"
+            checked={isPaged}
+            onChange={() => setIsPaged(!isPaged)}
+            className="rounded border-border text-primary focus:ring-primary h-4 w-4"
+          />
+          <label
+            htmlFor="paged-view"
+            className="cursor-pointer font-medium select-none text-foreground"
+            title={APPROXIMATE_LAYOUT_NOTE}
+          >
+            Page View
+          </label>
         </div>
-        <div>
-          Status:{' '}
-          <span className="font-semibold text-foreground">
-            {isEditable ? 'Editing' : 'Read-only'}
+        <div className="flex items-center gap-3">
+          <span>
+            Status:{' '}
+            <span className="font-semibold text-foreground">
+              {isEditable ? 'Editing' : 'Read-only'}
+            </span>
           </span>
+          {isPaged && (
+            <span
+              className="font-semibold text-foreground cursor-help"
+              title={APPROXIMATE_LAYOUT_NOTE}
+            >
+              {geometry.label} • ~{pageCount} {pageCount === 1 ? 'page' : 'pages'}
+            </span>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handlePrint}
+            title="Print document content"
+            className="h-7 px-2.5 text-xs font-semibold gap-1.5"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Print
+          </Button>
         </div>
       </div>
 
@@ -351,6 +470,15 @@ export default function TipTapEditor({
             >
               <Terminal className="h-4 w-4" />
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => editor.chain().focus().setPageBreak().run()}
+              title="Insert page break (Ctrl/Cmd + Enter)"
+            >
+              <SeparatorHorizontal className="h-4 w-4" />
+            </Button>
           </div>
 
           {/* History Actions */}
@@ -419,9 +547,27 @@ export default function TipTapEditor({
         </BubbleMenu>
       )}
 
-      {/* Editor Area */}
-      <div className="prose max-w-none bg-background min-h-[450px] p-4 w-full rounded-b-lg">
-        <EditorContent editor={editor} />
+      {/* Editor Area.
+          Both modes render the same element structure so that toggling only
+          swaps classes. Remounting <EditorContent> would tear the ProseMirror
+          DOM out of the page and drop the caret. */}
+      <div className={isPaged ? 'page-canvas-backdrop' : 'bg-background w-full rounded-b-lg'}>
+        <div
+          className={isPaged ? 'page-canvas' : 'prose max-w-none min-h-[450px] p-4'}
+          style={isPaged ? canvasStyle : undefined}
+        >
+          <EditorContent editor={editor} />
+          {isPaged &&
+            Array.from({ length: pageCount }, (_, index) => (
+              <div
+                key={`page-${index + 1}`}
+                className="page-canvas__label"
+                style={{ top: index * pagePeriodPx + geometry.pageHeightPx + 6 }}
+              >
+                Page {index + 1} of {pageCount}
+              </div>
+            ))}
+        </div>
       </div>
 
       {/* Floating UI Elements */}
