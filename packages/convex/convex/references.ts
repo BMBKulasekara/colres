@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server.js";
 import { requireDocumentAccess } from "./lib/auth.js";
 import { buildCitationKey, toBibtexFile, unprotectedCapitals } from "./lib/citations.js";
+import { optionalText } from "./lib/externalData.js";
 
 const referenceTypeValidator = v.union(
     v.literal("article"),
@@ -227,19 +228,24 @@ export const lookupDoi = action({
       };
     }
 
+    // Crossref nulls rather than omits in places — notably `date-parts`, which
+    // is `[[null]]` for a work with no known date. The result of this lookup is
+    // spread straight into `addReference`, whose `v.optional()` validators
+    // accept `undefined` but reject `null`, so every nullable field has to be
+    // declared as one and converted below.
     const body = (await response.json()) as {
       message?: {
-        type?: string;
-        title?: string[];
-        author?: { given?: string; family?: string; name?: string }[];
-        issued?: { "date-parts"?: number[][] };
-        "container-title"?: string[];
-        publisher?: string;
-        volume?: string;
-        issue?: string;
-        page?: string;
-        DOI?: string;
-        URL?: string;
+        type?: string | null;
+        title?: string[] | null;
+        author?: { given?: string | null; family?: string | null; name?: string | null }[] | null;
+        issued?: { "date-parts"?: (number | null)[][] | null } | null;
+        "container-title"?: string[] | null;
+        publisher?: string | null;
+        volume?: string | null;
+        issue?: string | null;
+        page?: string | null;
+        DOI?: string | null;
+        URL?: string | null;
       };
     };
 
@@ -258,6 +264,8 @@ export const lookupDoi = action({
       dissertation: "phdthesis",
     };
 
+    const year = work.issued?.["date-parts"]?.[0]?.[0];
+
     return {
       ok: true as const,
       reference: {
@@ -271,17 +279,19 @@ export const lookupDoi = action({
           | "misc",
         title: work.title?.[0] ?? "Untitled",
         authors:
-          work.author?.map((a) =>
-            a.name ?? [a.given, a.family].filter(Boolean).join(" ")
-          ) ?? [],
-        year: work.issued?.["date-parts"]?.[0]?.[0],
-        venue: work["container-title"]?.[0],
-        publisher: work.publisher,
-        volume: work.volume,
-        number: work.issue,
-        pages: work.page,
-        doi: work.DOI ?? doi,
-        url: work.URL,
+          work.author
+            ?.map((a) => a.name ?? [a.given, a.family].filter(Boolean).join(" "))
+            // An entry with neither a name nor a given/family pair yields an
+            // empty string, which would render as a blank author in a citation.
+            .filter((name) => name.trim().length > 0) ?? [],
+        year: typeof year === "number" ? year : undefined,
+        venue: optionalText(work["container-title"]?.[0]),
+        publisher: optionalText(work.publisher),
+        volume: optionalText(work.volume),
+        number: optionalText(work.issue),
+        pages: optionalText(work.page),
+        doi: optionalText(work.DOI) ?? doi,
+        url: optionalText(work.URL),
       },
     };
   },

@@ -178,7 +178,7 @@ body {
 }
 
 .page-canvas .tiptap {
-  padding: var(--page-margin);
+  padding: var(--page-margin-top) var(--page-margin-right) var(--page-margin-bottom) var(--page-margin-left);
   min-height: 0;
   border-radius: 0;
   font-size: var(--page-font-size);
@@ -198,6 +198,54 @@ body {
   blockquote {
     color: #4b5563;
   }
+}
+
+/*
+ * Two-column flow.
+ *
+ * The pagination extension moves each block into its column with a relative
+ * offset, which paints it in the right place without taking it out of the
+ * flow. Two things have to come from the stylesheet for that to work:
+ *
+ *  - Every block is sized to a column (or to the full measure, for the title
+ *    block above the banner rule) *before* it is measured, so the line breaks
+ *    the extension measures are the ones the column gets.
+ *  - The editor element itself is pinned to the height of the page stack.
+ *    Its natural height is the height of one very long single column, which
+ *    is about twice the height the laid-out pages actually occupy, and would
+ *    otherwise leave a large empty run below the last page.
+ */
+.page-canvas--columns .tiptap {
+  height: var(--page-flow-height);
+  overflow: visible;
+}
+
+/* `border-box` is stated rather than inherited from the framework's reset: a
+   block whose padding pushed it past the column width would be measured at one
+   width and drawn at another, and the columns would overlap. */
+.page-canvas--columns .page-flow__column,
+.page-canvas--columns .page-flow__span {
+  box-sizing: border-box;
+}
+
+.page-canvas--columns .page-flow__column {
+  width: var(--column-width);
+}
+
+.page-canvas--columns .page-flow__span {
+  width: var(--content-width);
+}
+
+/*
+ * The banner rule: the horizontal rule that ends the title block and starts
+ * the columns. It is an ordinary horizontal rule, so an author can move it,
+ * but in a two-column document it decides the layout and is drawn as the
+ * marker it is rather than as a divider.
+ */
+.page-canvas--columns .tiptap>hr.page-flow__span {
+  border-top: 1px dashed var(--primary, #3b82f6);
+  opacity: 0.65;
+  margin: 0.75rem 0;
 }
 
 .page-canvas__label {
@@ -236,6 +284,119 @@ body {
 
 .page-canvas .tiptap .page-break::after {
   background: #ffffff;
+}
+
+/*
+ * IEEE typography.
+ *
+ * Applied whenever the document's template is built on IEEEtran, in both the
+ * paged and the continuous view, so the document reads as an IEEE paper while
+ * it is being written rather than only once it is printed.
+ *
+ * Section numbers are drawn with CSS counters instead of being typed into the
+ * headings. That is what IEEEtran does — `\section` numbers itself — and it
+ * means inserting or moving a section renumbers everything below it with no
+ * editing. Acknowledgment and References carry `data-unnumbered`, the editor's
+ * equivalent of `\section*`; see `tiptap/SectionNumbering.ts`.
+ *
+ * Sizes are in `em` so they track the body size the page geometry sets (10pt
+ * for IEEE): the 24pt title is 2.4em, an 11pt author line is 1.1em, and a
+ * section heading is the body size in small capitals.
+ */
+.doc-ieee .tiptap {
+  font-family: "Times New Roman", Times, Georgia, serif;
+  counter-reset: ieee-section;
+  text-align: justify;
+  hyphens: auto;
+}
+
+.doc-ieee .tiptap h1 {
+  font-size: 2.4em;
+  font-weight: 400;
+  line-height: 1.15;
+  text-align: center;
+  margin: 0 0 0.5em;
+}
+
+.doc-ieee .tiptap h2 {
+  font-size: 1em;
+  font-weight: 400;
+  font-variant: small-caps;
+  text-align: center;
+  line-height: 1.3;
+  margin: 1.25em 0 0.5em;
+  counter-increment: ieee-section;
+  counter-reset: ieee-subsection;
+}
+
+/*
+ * The gap after the number is a margin rather than a space in the content
+ * string: there is then no break opportunity between "III." and the heading
+ * text, and no CSS escape to get wrong in two stylesheets at once.
+ */
+.doc-ieee .tiptap h2::before {
+  content: counter(ieee-section, upper-roman) ".";
+  margin-right: 0.4em;
+}
+
+.doc-ieee .tiptap h3 {
+  font-size: 1em;
+  font-weight: 400;
+  font-style: italic;
+  text-align: left;
+  line-height: 1.3;
+  margin: 1em 0 0.35em;
+  counter-increment: ieee-subsection;
+}
+
+.doc-ieee .tiptap h3::before {
+  content: counter(ieee-subsection, upper-alpha) ".";
+  margin-right: 0.4em;
+}
+
+/* The editor's `\section*`: no number, and no effect on the ones that follow. */
+.doc-ieee .tiptap h2[data-unnumbered="true"],
+.doc-ieee .tiptap h3[data-unnumbered="true"] {
+  counter-increment: none;
+}
+
+.doc-ieee .tiptap h2[data-unnumbered="true"]::before,
+.doc-ieee .tiptap h3[data-unnumbered="true"]::before {
+  content: none;
+}
+
+.doc-ieee .tiptap p {
+  margin: 0;
+  line-height: 1.25;
+  text-indent: 1em;
+}
+
+/* The title block — everything above the banner rule — is centred and unindented. */
+.doc-ieee .tiptap>h1,
+.doc-ieee .tiptap>p {
+  text-align: center;
+  text-indent: 0;
+}
+
+.doc-ieee .tiptap>hr~p {
+  text-align: justify;
+  text-indent: 1em;
+}
+
+/* The abstract runs in from the margin, as `Abstract—` does in IEEEtran. */
+.doc-ieee .tiptap>hr+p {
+  text-indent: 0;
+}
+
+.doc-ieee .tiptap ul,
+.doc-ieee .tiptap ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.doc-ieee .tiptap li {
+  margin: 0;
+  line-height: 1.25;
 }
 
 /* Temporarily hide the Liveblocks branding badge during local development */
