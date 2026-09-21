@@ -102,3 +102,131 @@ export function computePageLayout(
 
   return { pushPx, pageCount: lastPage + 1 };
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Multi-column flow                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A block's displacement from where it naturally sits to where the column
+ * layout puts it. Applied as a relative offset, so the block is painted (and
+ * hit-tested) in its column while the surrounding flow is left alone.
+ */
+export interface BlockOffset {
+  dx: number;
+  dy: number;
+}
+
+export interface ColumnLayout {
+  offsets: BlockOffset[];
+  pageCount: number;
+}
+
+export interface ColumnLayoutOptions {
+  /** Text columns on a page. Two for the IEEE conference and journal formats. */
+  columnsPerPage: number;
+  columnWidth: number;
+  columnGap: number;
+  /** Writable height of a page, before any banner is subtracted. */
+  contentHeight: number;
+  /** One page plus the gutter drawn beneath it. */
+  period: number;
+  /**
+   * Number of leading blocks that span the full measure — the title, authors,
+   * and anything else above the banner rule. They stay in natural flow.
+   */
+  bannerCount: number;
+}
+
+/**
+ * Lays blocks out across the columns of a sequence of pages.
+ *
+ * Unlike the single-column case, this cannot be expressed as padding: a block
+ * has to move sideways as well as down, which means each one is displaced
+ * individually rather than carried along by a running shift. The natural flow
+ * underneath is a single stack of column-width blocks, which is exactly what
+ * makes the measured heights reusable — line breaking in the flow is already
+ * the line breaking the column will get.
+ *
+ * Vertical positions are derived from the measured natural tops rather than by
+ * accumulating heights, so the margins between two blocks survive the move.
+ * The margin above the block that opens a column is dropped, which is what
+ * every typesetter does at the top of a column.
+ */
+export function computeColumnLayout(
+  blocks: readonly MeasuredBlock[],
+  options: ColumnLayoutOptions
+): ColumnLayout {
+  const { columnsPerPage, columnWidth, columnGap, contentHeight, period, bannerCount } = options;
+
+  const offsets: BlockOffset[] = blocks.map(() => ({ dx: 0, dy: 0 }));
+
+  // The banner keeps its natural position, so its extent is simply how far the
+  // last of those blocks reaches. Columns on page one start below it.
+  let bannerHeight = 0;
+  for (let i = 0; i < bannerCount && i < blocks.length; i++) {
+    const block = blocks[i];
+    if (!block) continue;
+    bannerHeight = Math.max(bannerHeight, block.naturalTop + block.height);
+  }
+
+  const pageOf = (column: number) => Math.floor(column / columnsPerPage);
+  const slotOf = (column: number) => column % columnsPerPage;
+  const columnX = (column: number) => slotOf(column) * (columnWidth + columnGap);
+  /** Columns on the first page are shortened by the banner above them. */
+  const columnTop = (column: number) =>
+    pageOf(column) * period + (pageOf(column) === 0 ? bannerHeight : 0);
+  const columnHeight = (column: number) =>
+    pageOf(column) === 0 ? Math.max(0, contentHeight - bannerHeight) : contentHeight;
+
+  let column = 0;
+  /** Natural top of the block that opens the current column. */
+  let base: number | null = null;
+  let forcedBreak = false;
+  let lastColumn = 0;
+
+  for (let i = bannerCount; i < blocks.length; i++) {
+    const block = blocks[i];
+    if (!block) break;
+
+    if (forcedBreak) {
+      column = (pageOf(column) + 1) * columnsPerPage;
+      base = null;
+      forcedBreak = false;
+    }
+
+    if (base === null) base = block.naturalTop;
+
+    let top = block.naturalTop - base;
+    const available = columnHeight(column);
+
+    // A block taller than a whole column can never be made to fit, so moving
+    // it would only leave an empty column behind and still overflow.
+    if (top > EPSILON && top + block.height > available + EPSILON && block.height <= available) {
+      column += 1;
+      base = block.naturalTop;
+      top = 0;
+    }
+
+    offsets[i] = {
+      dx: Math.round(columnX(column)),
+      dy: Math.round(columnTop(column) + top - block.naturalTop),
+    };
+
+    lastColumn = Math.max(lastColumn, column);
+
+    // An over-tall block spills onto the pages below its own.
+    const bottom = columnTop(column) + top + block.height;
+    const spilledPage = Math.floor(Math.max(0, bottom - EPSILON) / period);
+    if (spilledPage > pageOf(lastColumn)) {
+      lastColumn = Math.max(lastColumn, spilledPage * columnsPerPage);
+    }
+
+    if (block.isHardBreak) forcedBreak = true;
+  }
+
+  // A hard break with nothing after it still opens its page.
+  if (forcedBreak) lastColumn = (pageOf(lastColumn) + 1) * columnsPerPage;
+
+  return { offsets, pageCount: pageOf(lastColumn) + 1 };
+}

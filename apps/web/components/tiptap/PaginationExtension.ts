@@ -4,7 +4,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { DEFAULT_PAGE_GEOMETRY, type PageGeometry } from '../../lib/pageGeometry';
-import { computePageLayout, EPSILON, type MeasuredBlock } from './pageLayout';
+import { computeColumnLayout, computePageLayout, EPSILON, type MeasuredBlock } from './pageLayout';
 
 /**
  * Word-style page simulation for a single continuous ProseMirror document.
@@ -33,6 +33,14 @@ import { computePageLayout, EPSILON, type MeasuredBlock } from './pageLayout';
  * Known limit: breaks land on block boundaries. A single block taller than one
  * page — a very long paragraph, a tall table — still straddles the boundary,
  * because splitting inside a block needs line-box measurement.
+ *
+ * Two-column documents (the IEEE conference and journal formats) take a second
+ * path through the same machinery. Padding cannot express a column layout —
+ * blocks have to move sideways — so there each block is displaced individually
+ * with a relative offset instead. Relative positioning moves the painted box
+ * and its hit-testing box together, so the caret still lands where the text is
+ * drawn, while the flow underneath stays the single column ProseMirror
+ * expects.
  */
 
 /** Where a top-level node sits in the document, for anchoring its decoration. */
@@ -71,17 +79,84 @@ function applyDecorations(view: EditorView, decorations: DecorationSet) {
   view.dispatch(tr);
 }
 
+/**
+ * How far into the document a banner rule is still taken to end the title
+ * block. Past this, a horizontal rule is just a divider the author wanted.
+ */
+const BANNER_SCAN_LIMIT = 16;
+
+/**
+ * Number of leading blocks that span the full measure in a two-column layout.
+ *
+ * The convention is the one the templates already follow: the title block runs
+ * from the top of the document to the first horizontal rule, and the columns
+ * start after it. That is how the publisher classes work too — `\maketitle`
+ * and the abstract span both columns in IEEEtran — and it keeps the marker
+ * visible and deletable in the editor rather than hiding it in metadata.
+ *
+ * A document with no rule near the top has no banner: everything flows into
+ * the columns.
+ */
+function countBannerBlocks(doc: EditorView['state']['doc']): number {
+  let banner = 0;
+  let index = 0;
+
+  doc.forEach((node) => {
+    if (banner > 0 || index >= BANNER_SCAN_LIMIT) {
+      index += 1;
+      return;
+    }
+    if (node.type.name === 'horizontalRule') banner = index + 1;
+    index += 1;
+  });
+
+  return banner;
+}
+
+/**
+ * Decorations that follow from the document's structure alone, never from a
+ * measurement: which blocks span the measure and which are column width.
+ *
+ * They have to stay applied while natural heights are being measured, because
+ * they set the width every line break depends on. Only the positional
+ * decorations are stripped for the measuring pass.
+ */
+function spanDecorations(doc: EditorView['state']['doc'], bannerCount: number): Decoration[] {
+  const decorations: Decoration[] = [];
+  let index = 0;
+
+  doc.forEach((node, offset) => {
+    decorations.push(
+      Decoration.node(offset, offset + node.nodeSize, {
+        class: index < bannerCount ? 'page-flow__span' : 'page-flow__column',
+      })
+    );
+    index += 1;
+  });
+
+  return decorations;
+}
+
 function measure(view: EditorView, options: PaginationOptions, storage: PaginationStorage) {
   const dom = view.dom as HTMLElement;
   if (!storage.enabled || !dom.isConnected) return;
 
+  const { geometry, gapPx } = options;
+  const isColumnFlow = geometry.columns > 1;
+  const bannerCount = isColumnFlow ? countBannerBlocks(view.state.doc) : 0;
+
+  // Width-setting decorations are re-derived every pass and kept applied
+  // throughout, so the heights measured below are the heights the final layout
+  // gets. Without them a column-width paragraph would be measured at the full
+  // measure and come out half as tall as it really is.
+  const structural = isColumnFlow ? spanDecorations(view.state.doc, bannerCount) : [];
+
   // Measure against the pristine layout. A padding push can change how margins
   // collapse *inside* the block it is applied to, so natural heights are only
-  // trustworthy with every decoration removed. Clearing and re-applying within
-  // a single task means the browser never paints the undecorated state.
-  if ((paginationKey.getState(view.state)?.find().length ?? 0) > 0) {
-    applyDecorations(view, DecorationSet.empty);
-  }
+  // trustworthy with every positional decoration removed. Clearing and
+  // re-applying within a single task means the browser never paints the
+  // undecorated state.
+  applyDecorations(view, DecorationSet.create(view.state.doc, structural));
 
   const positions: Block[] = [];
   const measured: MeasuredBlock[] = [];
@@ -117,28 +192,56 @@ function measure(view: EditorView, options: PaginationOptions, storage: Paginati
     return;
   }
 
-  const { geometry, gapPx } = options;
-
-  const layout = computePageLayout(
-    measured,
-    geometry.pageHeightPx + gapPx,
-    geometry.contentHeightPx
-  );
+  const period = geometry.pageHeightPx + gapPx;
 
   const decorations: Decoration[] = [];
-  layout.pushPx.forEach((push, index) => {
-    const block = positions[index];
-    if (!block || push <= 0) return;
-    decorations.push(
-      Decoration.node(block.pos, block.pos + block.size, { style: `padding-top:${push}px` })
-    );
-  });
+  let pageCount: number;
+
+  if (isColumnFlow) {
+    const layout = computeColumnLayout(measured, {
+      columnsPerPage: geometry.columns,
+      columnWidth: geometry.columnWidthPx,
+      columnGap: geometry.columnGapPx,
+      contentHeight: geometry.contentHeightPx,
+      period,
+      bannerCount,
+    });
+
+    pageCount = layout.pageCount;
+
+    // One decoration per block carrying both the width class and the offset,
+    // rather than layering a second decoration over the structural one.
+    layout.offsets.forEach((offset, index) => {
+      const block = positions[index];
+      if (!block) return;
+      decorations.push(
+        Decoration.node(block.pos, block.pos + block.size, {
+          class: index < bannerCount ? 'page-flow__span' : 'page-flow__column',
+          // `relative` leaves the block in the flow the measuring pass read,
+          // so the next pass measures the same natural layout again.
+          style: `position:relative;left:${offset.dx}px;top:${offset.dy}px`,
+        })
+      );
+    });
+  } else {
+    const layout = computePageLayout(measured, period, geometry.contentHeightPx);
+
+    pageCount = layout.pageCount;
+
+    layout.pushPx.forEach((push, index) => {
+      const block = positions[index];
+      if (!block || push <= 0) return;
+      decorations.push(
+        Decoration.node(block.pos, block.pos + block.size, { style: `padding-top:${push}px` })
+      );
+    });
+  }
 
   applyDecorations(view, DecorationSet.create(view.state.doc, decorations));
 
-  if (layout.pageCount !== storage.pageCount) {
-    storage.pageCount = layout.pageCount;
-    options.onPagesChange?.(layout.pageCount);
+  if (pageCount !== storage.pageCount) {
+    storage.pageCount = pageCount;
+    options.onPagesChange?.(pageCount);
   }
 }
 

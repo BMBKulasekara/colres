@@ -338,6 +338,7 @@ function EditorContent({ docs }: EditorContentProps) {
             onEditorReady={setEditorInstance}
             documentTitle={title}
             classOptions={docs.templateSnapshot?.classOptions}
+            documentClass={docs.templateSnapshot?.documentClass}
           />
         </div>
       </div>

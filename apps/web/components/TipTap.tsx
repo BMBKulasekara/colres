@@ -19,6 +19,7 @@ import { useMutation as useConvexMutation } from 'convex/react';
 import {
   Bold,
   Code,
+  Hash,
   Heading1,
   Heading2,
   Heading3,
@@ -43,18 +44,23 @@ import { Citation } from './tiptap/CitationExtension';
 import { PageBreak } from './tiptap/PageBreakNode';
 import { Pagination, setPagedView } from './tiptap/PaginationExtension';
 import { printDocument } from './tiptap/printDocument';
+import { SectionNumbering } from './tiptap/SectionNumbering';
 
 /** Paged view is a personal reading preference, so it is remembered per browser. */
 const PAGED_VIEW_STORAGE_KEY = 'colres:editor:paged-view';
 
 /**
  * The paged view lays the document out as the browser would print it, which is
- * not how the publisher's LaTeX class will set it — different fonts, different
- * measure, and two columns for the conference formats. It is a writing aid, so
- * it says so rather than letting an author trust it for a page limit.
+ * not how the publisher's LaTeX class will set it — different fonts and a
+ * different measure, even where the column count matches. It is a writing aid,
+ * so it says so rather than letting an author trust it for a page limit.
  */
 const APPROXIMATE_LAYOUT_NOTE =
   'Approximate layout. Final pagination is decided when the document is compiled from its template.';
+
+/** Shown on the paged-view toggle for two-column formats, where it does more. */
+const COLUMN_LAYOUT_NOTE =
+  'This format sets two columns. Page View shows the column flow; the continuous view does not.';
 
 interface TipTapEditorProps {
   isPageScrolled?: boolean;
@@ -65,6 +71,8 @@ interface TipTapEditorProps {
   documentTitle?: string;
   /** `templateSnapshot.classOptions`, which decide page size and body size. */
   classOptions?: readonly string[];
+  /** `templateSnapshot.documentClass` — decides margins, columns, typography. */
+  documentClass?: string;
 }
 
 export default function TipTapEditor({
@@ -74,15 +82,24 @@ export default function TipTapEditor({
   onEditorReady,
   documentTitle,
   classOptions,
+  documentClass,
 }: TipTapEditorProps) {
   const [isEditable, setIsEditable] = useState(true);
   const [isPaged, setIsPaged] = useState(false);
   const [pageCount, setPageCount] = useState(1);
 
-  const geometry = useMemo(() => getPageGeometry(classOptions), [classOptions]);
+  const geometry = useMemo(
+    () => getPageGeometry(classOptions, documentClass),
+    [classOptions, documentClass]
+  );
+
+  const isTwoColumn = geometry.columns > 1;
 
   /** Page pitch: one page plus the gutter beneath it. */
   const pagePeriodPx = geometry.pageHeightPx + PAGE_GAP_PX;
+
+  /** Height of the whole stack of pages, gutters included but not trailing. */
+  const canvasHeightPx = pageCount * pagePeriodPx - PAGE_GAP_PX;
 
   // Handed to CSS as custom properties so the stylesheet paints the pages and
   // the extension measures them from one set of numbers.
@@ -92,11 +109,21 @@ export default function TipTapEditor({
         '--page-width': `${geometry.pageWidthPx}px`,
         '--page-height': `${geometry.pageHeightPx}px`,
         '--page-gap': `${PAGE_GAP_PX}px`,
-        '--page-margin': `${geometry.marginPx}px`,
+        '--page-margin-top': `${geometry.margin.top}px`,
+        '--page-margin-right': `${geometry.margin.right}px`,
+        '--page-margin-bottom': `${geometry.margin.bottom}px`,
+        '--page-margin-left': `${geometry.margin.left}px`,
         '--page-font-size': `${geometry.bodyFontPx}px`,
-        minHeight: `${pageCount * pagePeriodPx - PAGE_GAP_PX}px`,
+        '--content-width': `${geometry.contentWidthPx}px`,
+        '--column-width': `${geometry.columnWidthPx}px`,
+        '--column-gap': `${geometry.columnGapPx}px`,
+        // In column flow every block is displaced out of the natural stack, so
+        // the editor element no longer has a useful height of its own and is
+        // pinned to the page stack instead.
+        '--page-flow-height': `${canvasHeightPx}px`,
+        minHeight: `${canvasHeightPx}px`,
       }) as CSSProperties,
-    [geometry, pageCount, pagePeriodPx]
+    [geometry, canvasHeightPx]
   );
 
   const liveblocks = useLiveblocksExtension({
@@ -117,6 +144,7 @@ export default function TipTapEditor({
       // silently strip them on load.
       Citation,
       PageBreak,
+      SectionNumbering,
       Pagination.configure({
         geometry,
         gapPx: PAGE_GAP_PX,
@@ -154,13 +182,18 @@ export default function TipTapEditor({
 
   // Restored after mount rather than during render: reading localStorage while
   // rendering would make the server and client markup disagree.
+  //
+  // A two-column format opens paged by default, because the continuous view
+  // cannot show columns at all — an author who has never touched the toggle
+  // would otherwise be told the document is two-column and shown one column.
   useEffect(() => {
     try {
-      setIsPaged(window.localStorage.getItem(PAGED_VIEW_STORAGE_KEY) === 'true');
+      const stored = window.localStorage.getItem(PAGED_VIEW_STORAGE_KEY);
+      setIsPaged(stored === null ? isTwoColumn : stored === 'true');
     } catch {
-      // Storage can throw outright in private browsing; the default is fine.
+      setIsPaged(isTwoColumn);
     }
-  }, []);
+  }, [isTwoColumn]);
 
   useEffect(() => {
     if (!editor) return;
@@ -181,16 +214,19 @@ export default function TipTapEditor({
     });
   }, [editor, documentTitle, geometry]);
 
-  const { isBold, isItalic, isUnderline, isStrikethrough, isCode } = useEditorState({
-    editor,
-    selector: (ctx) => ({
-      isBold: ctx.editor?.isActive('bold') ?? false,
-      isItalic: ctx.editor?.isActive('italic') ?? false,
-      isUnderline: ctx.editor?.isActive('underline') ?? false,
-      isStrikethrough: ctx.editor?.isActive('strike') ?? false,
-      isCode: ctx.editor?.isActive('code') ?? false,
-    }),
-  });
+  const { isBold, isItalic, isUnderline, isStrikethrough, isCode, isHeading, isUnnumbered } =
+    useEditorState({
+      editor,
+      selector: (ctx) => ({
+        isBold: ctx.editor?.isActive('bold') ?? false,
+        isItalic: ctx.editor?.isActive('italic') ?? false,
+        isUnderline: ctx.editor?.isActive('underline') ?? false,
+        isStrikethrough: ctx.editor?.isActive('strike') ?? false,
+        isCode: ctx.editor?.isActive('code') ?? false,
+        isHeading: ctx.editor?.isActive('heading') ?? false,
+        isUnnumbered: ctx.editor?.getAttributes('heading').unnumbered === true,
+      }),
+    });
 
   const { threads } = useThreads({ query: { resolved: false } });
   const room = useRoom();
@@ -271,7 +307,7 @@ export default function TipTapEditor({
           <label
             htmlFor="paged-view"
             className="cursor-pointer font-medium select-none text-foreground"
-            title={APPROXIMATE_LAYOUT_NOTE}
+            title={isTwoColumn ? COLUMN_LAYOUT_NOTE : APPROXIMATE_LAYOUT_NOTE}
           >
             Page View
           </label>
@@ -288,7 +324,9 @@ export default function TipTapEditor({
               className="font-semibold text-foreground cursor-help"
               title={APPROXIMATE_LAYOUT_NOTE}
             >
-              {geometry.label} • ~{pageCount} {pageCount === 1 ? 'page' : 'pages'}
+              {geometry.label}
+              {isTwoColumn ? ' • 2 columns' : ''} • ~{pageCount}{' '}
+              {pageCount === 1 ? 'page' : 'pages'}
             </span>
           )}
           <Button
@@ -401,6 +439,29 @@ export default function TipTapEditor({
             >
               <Type className="h-4 w-4" />
             </Button>
+            {/* Numbering only means anything in a format that numbers its
+                sections, so the control appears only there. */}
+            {isHeading && geometry.styleId === 'ieee' && (
+              <Button
+                type="button"
+                variant={isUnnumbered ? 'ghost' : 'secondary'}
+                size="icon-xs"
+                onClick={() =>
+                  editor
+                    .chain()
+                    .focus()
+                    .updateAttributes('heading', { unnumbered: !isUnnumbered })
+                    .run()
+                }
+                title={
+                  isUnnumbered
+                    ? 'Number this section (I, II, III…)'
+                    : 'Leave this section unnumbered, like Acknowledgment and References'
+                }
+              >
+                <Hash className="h-4 w-4" />
+              </Button>
+            )}
 
             <div className="w-px h-5 bg-border mx-1 self-center" />
 
@@ -551,9 +612,17 @@ export default function TipTapEditor({
           Both modes render the same element structure so that toggling only
           swaps classes. Remounting <EditorContent> would tear the ProseMirror
           DOM out of the page and drop the caret. */}
-      <div className={isPaged ? 'page-canvas-backdrop' : 'bg-background w-full rounded-b-lg'}>
+      <div
+        className={`${geometry.styleId === 'ieee' ? 'doc-ieee ' : ''}${
+          isPaged ? 'page-canvas-backdrop' : 'bg-background w-full rounded-b-lg'
+        }`}
+      >
         <div
-          className={isPaged ? 'page-canvas' : 'prose max-w-none min-h-[450px] p-4'}
+          className={
+            isPaged
+              ? `page-canvas${isTwoColumn ? ' page-canvas--columns' : ''}`
+              : 'prose max-w-none min-h-[450px] p-4'
+          }
           style={isPaged ? canvasStyle : undefined}
         >
           <EditorContent editor={editor} />

@@ -321,6 +321,96 @@ function titleBlock(includeAbstract = true, includeKeywords = true): string {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  IEEE skeleton                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * IEEE papers are laid out differently enough from the generic skeleton to be
+ * worth their own builder.
+ *
+ * Three conventions are carried by the markup and read back by the editor:
+ *
+ *  - The horizontal rule after the author block is the **banner rule**. In a
+ *    two-column format everything above it spans the measure, exactly as
+ *    `\maketitle` does in IEEEtran, and the columns start below it. It is an
+ *    ordinary rule, so an author who wants the abstract to span both columns
+ *    can simply move it down.
+ *  - The abstract and index terms are bold run-in paragraphs opening with an
+ *    italic `Abstract—` / `Index Terms—`, not headings. That is how IEEE sets
+ *    them, and it keeps them out of the section numbering.
+ *  - Section numbers are never typed. `IEEEtran` numbers `\section` itself and
+ *    so does the editor, from CSS counters, so the headings here carry no
+ *    numerals. `data-unnumbered` marks the two sections IEEE leaves out of the
+ *    sequence — the editor's `\section*`.
+ */
+function ieeeTitleBlock(): string {
+    return [
+        "<h1>{{TITLE}}</h1>",
+        "<p>{{AUTHORS}}</p>",
+        "<p><em>{{AFFILIATION}}</em></p>",
+        "<p>City, Country</p>",
+        "<p>name@example.com</p>",
+        tip(
+            "Everything above the dashed rule spans the full page width, like the title block of a printed IEEE paper. Everything below it flows into two columns. Move the rule if you want more or less in the banner."
+        ),
+        "<hr />",
+    ].join("");
+}
+
+function ieeeBody(): string {
+    return [
+        // IEEE sets the whole abstract and index-terms block in bold, with the
+        // run-in label additionally italic. Hence <strong> around all of it.
+        "<p><strong><em>Abstract—</em>{{ABSTRACT}}</strong></p>",
+        "<p><strong><em>Index Terms—</em>{{KEYWORDS}}</strong></p>",
+        "<h2>Introduction</h2>",
+        tip(
+            "Motivate the problem, state the gap in existing work, and close with a list of your contributions. Section numbers are added automatically — do not type them."
+        ),
+        "<p>Describe the problem and why it matters.</p>",
+        "<ul><li>First contribution.</li><li>Second contribution.</li><li>Third contribution.</li></ul>",
+        "<h2>Related Work</h2>",
+        tip("Group prior work by approach rather than by date, and say what each group leaves unresolved."),
+        "<p>Summarise the prior work this paper builds on.</p>",
+        "<h2>Method</h2>",
+        tip("Give enough detail for another group to reproduce this. Subsections are lettered automatically: A, B, C."),
+        "<h3>Data</h3>",
+        "<p>Describe the dataset or study population.</p>",
+        "<h3>Procedure</h3>",
+        "<p>Describe the steps taken.</p>",
+        "<h3>Evaluation</h3>",
+        "<p>Describe how success is measured.</p>",
+        "<h2>Results</h2>",
+        tip("Report what you measured here and leave interpretation for the discussion."),
+        "<p>Present the findings.</p>",
+        "<h2>Discussion</h2>",
+        tip("Interpret the results, compare against prior work, and state the limitations plainly."),
+        "<p>Interpret the findings and state the limitations.</p>",
+        "<h2>Conclusion</h2>",
+        "<p>Restate the contribution and name a concrete next step.</p>",
+        // IEEE sets both of these with \section*, so they sit outside the
+        // numbered sequence and the sections above keep their numbers.
+        '<h2 data-unnumbered="true">Acknowledgment</h2>',
+        tip("Name funding sources and grant numbers. Unnumbered in the IEEE format."),
+        "<p>Acknowledge funding and support here.</p>",
+        '<h2 data-unnumbered="true">References</h2>',
+        tip("Insert citations from the Research panel; entries appear here automatically."),
+    ].join("");
+}
+
+/** Paper size options. Geometry needs one of these to pick A4 over US Letter. */
+const ieeePaperOptions = [
+    { value: "a4paper", label: "A4 paper", isDefault: true, group: "paper" },
+    { value: "letterpaper", label: "US Letter", group: "paper" },
+];
+
+const IEEE_SECTIONS: CatalogSection[] = [
+    ...IMRAD_SECTIONS.slice(0, -1),
+    { key: "acknowledgment", title: "Acknowledgment", required: false, targetWords: 80 },
+    { key: "references", title: "References", required: true },
+];
+
+/* -------------------------------------------------------------------------- */
 /*  Templates                                                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -363,28 +453,12 @@ const TEMPLATES: CatalogTemplate[] = [
         name: "IEEE Conference Paper",
         category: "journal-articles",
         description:
-            "Two-column IEEE conference format. The most requested layout in engineering and computer science.",
+            "Two-column IEEE conference format, with the banner title block, run-in abstract, and automatic Roman section numbering the format calls for.",
         tags: ["ieee", "conference", "two-column", "engineering"],
         official: true,
         publisher: "IEEE",
-        content:
-            titleBlock() +
-            [
-                "<h2>Index Terms</h2>",
-                tip("IEEE calls these index terms. Use three to five, lower case except proper nouns."),
-                "<p>{{KEYWORDS}}</p>",
-            ].join("") +
-            imradBody() +
-            [
-                "<h2>Acknowledgment</h2>",
-                tip("Name funding sources and grant numbers. Unnumbered in the IEEE format."),
-                "<p>Acknowledge funding and support here.</p>",
-            ].join(""),
-        sections: [
-            ...IMRAD_SECTIONS.slice(0, -1),
-            { key: "acknowledgment", title: "Acknowledgment", required: false, targetWords: 80 },
-            { key: "references", title: "References", required: true },
-        ],
+        content: ieeeTitleBlock() + ieeeBody(),
+        sections: IEEE_SECTIONS,
         fields: [authorsField, affiliationField, abstractField, keywordsField],
         engine: "pdflatex",
         bibTool: "bibtex",
@@ -400,7 +474,8 @@ const TEMPLATES: CatalogTemplate[] = [
             },
             { value: "journal", label: "Journal / Transactions", group: "mode" },
             { value: "technote", label: "Technical note", group: "mode" },
-            { value: "peerreview", label: "Peer review (anonymous)", group: "mode" },
+            { value: "peerreview", label: "Peer review (single column)", group: "mode" },
+            ...ieeePaperOptions,
         ],
         requiredPackages: ["cite", "amsmath", "amssymb", "amsfonts", "graphicx", "textcomp", "xcolor"],
         citationStyle: "ieee",
@@ -422,15 +497,8 @@ const TEMPLATES: CatalogTemplate[] = [
         tags: ["ieee", "journal", "transactions"],
         official: true,
         publisher: "IEEE",
-        content:
-            titleBlock() +
-            imradBody() +
-            "<h2>Acknowledgment</h2><p>Acknowledge funding and support here.</p>",
-        sections: [
-            ...IMRAD_SECTIONS.slice(0, -1),
-            { key: "acknowledgment", title: "Acknowledgment", required: false },
-            { key: "references", title: "References", required: true },
-        ],
+        content: ieeeTitleBlock() + ieeeBody(),
+        sections: IEEE_SECTIONS,
         fields: [authorsField, affiliationField, abstractField, keywordsField],
         engine: "pdflatex",
         bibTool: "bibtex",
@@ -440,6 +508,7 @@ const TEMPLATES: CatalogTemplate[] = [
         classOptions: [
             { value: "journal", label: "Journal / Transactions", isDefault: true, group: "mode" },
             { value: "conference", label: "Conference paper", group: "mode" },
+            ...ieeePaperOptions,
         ],
         requiredPackages: ["cite", "amsmath", "amssymb", "graphicx", "textcomp", "xcolor"],
         citationStyle: "ieee",
