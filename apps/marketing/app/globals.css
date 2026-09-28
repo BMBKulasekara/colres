@@ -2,7 +2,138 @@
 @import "@repo/ui/globals.css";
 @source "../../../packages/ui/src/**/*.tsx";
 
+/*
+ * Marketing tokens (design spec v1.0, p.03 + p.15).
+ *
+ * The marketing site is light-only: sections use the explicit slate / indigo /
+ * teal / amber palette from the spec rather than the shared semantic tokens,
+ * which flip under `prefers-color-scheme: dark`.
+ */
+@theme inline {
+  --color-brand-teal: #0d9488;
+  --color-brand-teal-soft: #f0fdfa;
+  --color-highlight: #f59e0b;
+  --color-highlight-soft: #fef3c7;
+  --color-night: #1e1b4b;
+  --color-primary-hover: #4338ca;
+  --color-text-body: #475569;
+  --color-slate-950: #0b1120;
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-source-serif);
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 4px 12px -2px rgb(15 23 42 / 0.08);
+  --shadow-float: 0 24px 48px -12px rgb(30 27 75 / 0.18);
+  --shadow-glow: 0 24px 48px -16px rgb(79 70 229 / 0.35);
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-accordion-down: accordion-down 200ms ease-out;
+  --animate-accordion-up: accordion-up 200ms ease-out;
+  --animate-fade-in: fade-in 400ms ease-out both;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(-6px);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+html {
+  color-scheme: light;
+  scroll-behavior: smooth;
+  /* Keeps anchor targets clear of the 72 px sticky nav. */
+  scroll-padding-top: 88px;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #4f46e5, #0d9488);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bg-brand-gradient {
+  background: linear-gradient(135deg, #4f46e5, #0d9488);
+}
+
+.bg-night-glow {
+  background-color: #1e1b4b;
+  background-image:
+    radial-gradient(60% 120% at 85% 0%, rgb(99 102 241 / 0.6), transparent 60%),
+    radial-gradient(50% 120% at 0% 100%, rgb(13 148 136 / 0.5), transparent 60%);
+}
+
+/* Scroll-reveal (see _components/ui/reveal.tsx). */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 500ms ease-out,
+    transform 500ms ease-out;
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+[data-reveal="visible"] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

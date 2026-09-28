@@ -105,12 +105,85 @@ export default defineSchema({
 
   chats: defineTable({
     documentId: v.id("documents"),
+    /** May be empty when the message is only an attachment or a voice note. */
     text: v.string(),
     senderId: v.string(),
     senderName: v.string(),
     senderAvatar: v.string(),
     createdAt: v.number(),
-  }).index("by_document_id", ["documentId"]),
+
+    /** The message being replied to. Absent for a message that starts a thread. */
+    replyTo: v.optional(v.id("chats")),
+
+    /**
+     * Clerk ids of the people named in `text`. Stored alongside the text
+     * rather than encoded into it, so that a mention still works after
+     * somebody changes their display name — see `lib/chatMentions.ts`.
+     */
+    mentions: v.optional(v.array(v.string())),
+
+    /**
+     * Files and voice notes, in the order they were attached.
+     *
+     * The name, type and size are copied onto the message rather than read
+     * back from storage metadata on every query: rendering a list of twenty
+     * messages would otherwise mean twenty extra reads to draw file cards.
+     */
+    attachments: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"),
+          name: v.string(),
+          mimeType: v.string(),
+          size: v.number(),
+          kind: v.union(v.literal("file"), v.literal("image"), v.literal("voice")),
+          /** Voice only: clip length, so the player can show it before loading. */
+          durationSec: v.optional(v.number()),
+        })
+      )
+    ),
+  })
+    .index("by_document_id", ["documentId"])
+    .index("by_document_and_time", ["documentId", "createdAt"]),
+
+  /**
+   * Emoji reactions, one row per person per emoji per message.
+   *
+   * A separate table rather than an array on the message, because an array
+   * would have to be read, modified and written back: two people reacting at
+   * the same moment would race, and the slower write would silently drop the
+   * faster one's reaction. A row per reaction has no such step.
+   */
+  chatReactions: defineTable({
+    messageId: v.id("chats"),
+    /** Denormalised so a document's reactions can be fetched in one query. */
+    documentId: v.id("documents"),
+    userId: v.string(),
+    userName: v.string(),
+    emoji: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_document", ["documentId"])
+    .index("by_message_user_emoji", ["messageId", "userId", "emoji"]),
+
+  /**
+   * How far each person has read each document's chat.
+   *
+   * Kept on the server rather than in the browser's local storage so that
+   * "unread" means the same thing on a laptop and a phone: a marker held per
+   * browser would show a full badge on every device the conversation had not
+   * happened to be open in.
+   *
+   * One row per person per document, holding a timestamp rather than a set of
+   * message ids — a conversation is read forwards, so the boundary is a point
+   * in time and the row never grows.
+   */
+  chatReads: defineTable({
+    documentId: v.id("documents"),
+    userId: v.string(),
+    lastReadAt: v.number(),
+  }).index("by_document_and_user", ["documentId", "userId"]),
 
   paperSuggestions: defineTable({
     documentId: v.id("documents"),
@@ -269,13 +342,38 @@ export default defineSchema({
     title: v.string(),
     authors: v.array(v.string()),
     year: v.optional(v.number()),
+    /**
+     * Month of publication, 1-12. IEEE prints it abbreviated before the year
+     * in a journal reference ("Jun. 2014"), so it is stored as a number and
+     * localised nowhere — the abbreviation is a formatting decision.
+     */
+    month: v.optional(v.number()),
     venue: v.optional(v.string()),
     publisher: v.optional(v.string()),
+    /**
+     * Where the publisher is: "Cambridge, MA, USA". IEEE puts it before the
+     * publisher in a book reference and after the conference name in a
+     * proceedings one, and there is nowhere else in the record to keep it.
+     */
+    address: v.optional(v.string()),
     volume: v.optional(v.string()),
     number: v.optional(v.string()),
     pages: v.optional(v.string()),
     doi: v.optional(v.string()),
     url: v.optional(v.string()),
+    /**
+     * When the author last opened the page, as epoch milliseconds. A web page
+     * has no publication date to stand behind, so IEEE ends the reference with
+     * "(accessed Jul. 18, 2022)" instead.
+     */
+    accessed: v.optional(v.number()),
+    /**
+     * Edition of a book, as typed: "5", "2nd", "Rev.". APA prints it after the
+     * title, "(5th ed.)"; IEEE after the title, "5th ed.".
+     */
+    edition: v.optional(v.string()),
+    /** Editors of the book a chapter or paper appears in, in credited order. */
+    editors: v.optional(v.array(v.string())),
     abstract: v.optional(v.string()),
     source: v.union(
       v.literal("openalex"),

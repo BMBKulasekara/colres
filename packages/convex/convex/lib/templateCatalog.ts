@@ -411,6 +411,281 @@ const IEEE_SECTIONS: CatalogSection[] = [
 ];
 
 /* -------------------------------------------------------------------------- */
+/*  APA 7 student paper skeleton                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * An APA Style (7th edition) student paper, following APA's Student Paper
+ * Setup Guide and Student Title Page Guide.
+ *
+ * Page order is title page, text, references, then any appendices, each
+ * section starting on a new page. The editor reads three conventions from this
+ * markup:
+ *
+ *  - Everything before the first page break is the **title page**: centred
+ *    lines, the bold title three or four lines down, and one blank line between
+ *    the title and the byline. The page break is an ordinary one, so it stays
+ *    visible and can be moved.
+ *  - APA heading levels map straight onto heading levels: Level 1 is `<h1>`
+ *    (centred bold), Level 2 `<h2>`, and so on to Level 5. The repeated title at
+ *    the top of the text doubles as the introduction's Level 1 heading, which
+ *    is why there is no "Introduction" heading.
+ *  - The References heading is followed by the generated reference list, so a
+ *    new paper already has its alphabetical, hanging-indent list in place.
+ *
+ * Student papers carry no abstract, author note, or running head unless the
+ * instructor asks, so none are included.
+ */
+function apaStudentPaper(): string {
+    return [
+        // Title page.
+        "<h1>{{TITLE}}</h1>",
+        "<p>{{AUTHORS}}</p>",
+        "<p>{{AFFILIATION}}</p>",
+        "<p>{{COURSE}}</p>",
+        "<p>{{INSTRUCTOR}}</p>",
+        "<p>{{DUE_DATE}}</p>",
+        tip(
+            "This is the title page; it ends at the page break below. Keep the title bold and in title case, and every other line plain. The page number 1 appears top right. Student papers need no running head unless your instructor asks for one."
+        ),
+        '<div data-page-break=""></div>',
+        apaText(),
+    ].join("");
+}
+
+/**
+ * The pages every APA paper shares after its front matter: the text under the
+ * repeated title, the references, and an optional appendix.
+ */
+function apaText(): string {
+    return [
+        // Text. The repeated title stands in for an "Introduction" heading.
+        "<h1>{{TITLE}}</h1>",
+        tip(
+            'The paper title is repeated at the top of the first page of text. Do not add an "Introduction" heading: the opening paragraphs are understood to be the introduction. If your instructor asks for an abstract, put it on its own page after the title page, under a centred bold "Abstract" label.'
+        ),
+        "<p>Introduce the topic and explain why it matters.</p>",
+        "<p>Summarise the relevant research and state the purpose of this paper.</p>",
+        "<h1>Method</h1>",
+        tip(
+            "Start each main section with a Level 1 heading. Use Level 2 for subsections, and only when a section has two or more of them. Levels 3 to 5 are on the toolbar; Levels 4 and 5 run into their paragraph, so end them with a period."
+        ),
+        "<h2>Participants</h2>",
+        "<p>Describe who took part and how they were recruited.</p>",
+        "<h2>Procedure</h2>",
+        "<p>Describe what was done, in the order it was done.</p>",
+        "<h1>Results</h1>",
+        tip(
+            'Call out each table or figure in the text before it appears, for example "(see Table 1)". Tables and figures are numbered automatically, with the bold number and italic title above the table or image.'
+        ),
+        "<p>Report the findings.</p>",
+        "<h1>Discussion</h1>",
+        "<p>Interpret the findings, state the limitations, and suggest directions for future work.</p>",
+
+        // References, on a new page.
+        '<div data-page-break=""></div>',
+        "<h1>References</h1>",
+        '<div data-bibliography="true"></div>',
+        tip(
+            "Insert citations from the Refs panel. They appear in the text as (Author, Year) and are listed here alphabetically, double-spaced, with a hanging indent. Every work listed here should be cited in the text, and every work cited should be listed."
+        ),
+
+        // Appendix, on a new page.
+        '<div data-page-break=""></div>',
+        "<h1>Appendix</h1>",
+        "<h1>Title of the Appendix</h1>",
+        tip(
+            'Optional — delete this page if the paper has no appendix. With more than one, label them "Appendix A", "Appendix B", and so on, and call each out in the text in that order.'
+        ),
+        "<p>Present supplementary material here.</p>",
+    ].join("");
+}
+
+/**
+ * An APA Style (7th edition) professional paper — the manuscript format for
+ * submission to a journal.
+ *
+ * It differs from the student paper only in its front matter:
+ *
+ *  - a **running head** — a shortened title in capitals, top left of every
+ *    page. It is the first block of the document (`<p data-running-head>`);
+ *    the editor draws it in the page header and print repeats it on every page;
+ *  - an **Author Note** in the bottom half of the title page, under a bold
+ *    centred label (`data-apa-role="author-note"`), with ORCID iDs, affiliation
+ *    changes, disclosures and a correspondence address;
+ *  - an **Abstract** page under a bold centred label (`data-apa-role=
+ *    "abstract"`), its first line flush left, followed by italic "Keywords:".
+ *
+ * There is no course, instructor or due date.
+ */
+function apaProfessionalPaper(): string {
+    return [
+        "<p data-running-head>{{RUNNING_HEAD}}</p>",
+
+        // Title page.
+        "<h1>{{TITLE}}</h1>",
+        "<p>{{AUTHORS}}</p>",
+        "<p>{{AFFILIATION}}</p>",
+        tip(
+            'The running head above is printed in capitals at the top left of every page; keep it to 50 characters. When authors have different affiliations, add superscript numerals after each name and before each affiliation, one affiliation per line.'
+        ),
+        '<h1 data-apa-role="author-note">Author Note</h1>',
+        "<p>Give each author's ORCID iD here: Author Name https://orcid.org/0000-0000-0000-0000</p>",
+        "<p>State any changes in affiliation since the research was done.</p>",
+        "<p>Disclose conflicts of interest and funding, and thank anyone who helped.</p>",
+        "<p>Correspondence concerning this article should be addressed to Author Name, Department, University, Street Address, City, Postcode. Email: name@example.com</p>",
+        '<div data-page-break=""></div>',
+
+        // Abstract.
+        '<h1 data-apa-role="abstract">Abstract</h1>',
+        "<p>{{ABSTRACT}}</p>",
+        "<p><em>Keywords:</em> {{KEYWORDS}}</p>",
+        tip(
+            "One paragraph of up to 250 words, its first line flush left. List three to five keywords on the indented line after it."
+        ),
+        '<div data-page-break=""></div>',
+        apaText(),
+    ].join("");
+}
+
+const APA_PROFESSIONAL_SECTIONS: CatalogSection[] = [
+    {
+        key: "title-page",
+        title: "Title Page",
+        required: true,
+        guidance: "Running head, title, byline, affiliations, and an author note in the bottom half.",
+    },
+    {
+        key: "abstract",
+        title: "Abstract",
+        required: true,
+        targetWords: 200,
+        maxWords: 250,
+        guidance: "One paragraph, first line flush left, followed by keywords.",
+    },
+    {
+        key: "introduction",
+        title: "Introduction",
+        required: true,
+        targetWords: 1000,
+        guidance: 'Begins under the repeated paper title. No "Introduction" heading.',
+    },
+    { key: "method", title: "Method", required: true, targetWords: 1200 },
+    { key: "results", title: "Results", required: true, targetWords: 1000 },
+    { key: "discussion", title: "Discussion", required: true, targetWords: 1000 },
+    {
+        key: "references",
+        title: "References",
+        required: true,
+        guidance: "Starts on a new page. Alphabetical, double-spaced, 0.5 in. hanging indent.",
+    },
+    { key: "appendix", title: "Appendix", required: false },
+];
+
+const APA_STUDENT_SECTIONS: CatalogSection[] = [
+    {
+        key: "title-page",
+        title: "Title Page",
+        required: true,
+        guidance: "Title, authors, affiliation, course, instructor, and due date, centred.",
+    },
+    {
+        key: "introduction",
+        title: "Introduction",
+        required: true,
+        targetWords: 600,
+        guidance: 'Begins under the repeated paper title. No "Introduction" heading.',
+    },
+    { key: "method", title: "Method", required: false, targetWords: 700 },
+    { key: "results", title: "Results", required: false, targetWords: 600 },
+    { key: "discussion", title: "Discussion", required: true, targetWords: 600 },
+    {
+        key: "references",
+        title: "References",
+        required: true,
+        guidance: "Starts on a new page. Alphabetical, double-spaced, 0.5 in. hanging indent.",
+    },
+    {
+        key: "appendix",
+        title: "Appendix",
+        required: false,
+        guidance: "Each appendix on its own page, labelled and titled in bold, centred.",
+    },
+];
+
+const APA_STUDENT_FIELDS: CatalogField[] = [
+    {
+        key: "authors",
+        label: "Authors",
+        type: "authors",
+        required: false,
+        placeholder: "{{AUTHORS}}",
+        help: 'Full names as first name, middle initial, last name (e.g., Betsy R. Klein), separated by commas. "and" is added for you.',
+    },
+    {
+        key: "affiliation",
+        label: "Department and university",
+        type: "text",
+        required: false,
+        placeholder: "{{AFFILIATION}}",
+        help: "For example: Department of Psychology, University of Georgia",
+    },
+    {
+        key: "course",
+        label: "Course number and name",
+        type: "text",
+        required: false,
+        placeholder: "{{COURSE}}",
+        help: "As shown on course materials, for example: PSY 201: Introduction to Psychology",
+    },
+    {
+        key: "instructor",
+        label: "Instructor",
+        type: "text",
+        required: false,
+        placeholder: "{{INSTRUCTOR}}",
+        help: "With the instructor's preferred title, for example: Dr. Rowan J. Estes",
+    },
+    {
+        key: "dueDate",
+        label: "Assignment due date",
+        type: "date",
+        required: false,
+        placeholder: "{{DUE_DATE}}",
+        help: "Written out with the month spelled in full, e.g., October 18, 2025.",
+    },
+];
+
+const APA_PROFESSIONAL_FIELDS: CatalogField[] = [
+    {
+        key: "runningHead",
+        label: "Running head",
+        type: "text",
+        required: true,
+        placeholder: "{{RUNNING_HEAD}}",
+        help: "A shortened title of up to 50 characters, printed in capitals at the top of every page. No abbreviations; \"&\" is allowed.",
+    },
+    {
+        key: "authors",
+        label: "Authors",
+        type: "authors",
+        required: false,
+        placeholder: "{{AUTHORS}}",
+        help: 'Full names, separated by commas. "and" is added for you.',
+    },
+    {
+        key: "affiliation",
+        label: "Affiliation",
+        type: "text",
+        required: false,
+        placeholder: "{{AFFILIATION}}",
+        help: "Where the research was done: department, then institution. For example: Department of Nursing, Morrigan University",
+    },
+    abstractField,
+    keywordsField,
+];
+
+/* -------------------------------------------------------------------------- */
 /*  Templates                                                                  */
 /* -------------------------------------------------------------------------- */
 
@@ -1067,6 +1342,75 @@ const TEMPLATES: CatalogTemplate[] = [
         },
         featured: false,
         order: 11,
+    },
+    {
+        slug: "apa-student-paper",
+        name: "APA Student Paper (7th ed.)",
+        category: "assignments",
+        description:
+            "APA Style student paper: title page, double-spaced text with five heading levels, (Author, Year) citations, and an alphabetical reference list with hanging indents. Page numbers top right on every page.",
+        tags: ["apa", "apa-7", "student", "psychology", "social-sciences", "essay"],
+        official: false,
+        content: apaStudentPaper(),
+        sections: APA_STUDENT_SECTIONS,
+        fields: APA_STUDENT_FIELDS,
+        engine: "pdflatex",
+        // biblatex-apa, which implements the APA 7 reference rules, needs biber.
+        bibTool: "biber",
+        passes: 3,
+        entryFile: "main.tex",
+        documentClass: "apa7",
+        classOptions: [
+            { value: "stu", label: "Student paper", isDefault: true, group: "mode" },
+            { value: "letterpaper", label: "US Letter", isDefault: true, group: "paper" },
+            { value: "a4paper", label: "A4 paper", group: "paper" },
+            { value: "12pt", label: "12pt body text", isDefault: true, group: "size" },
+            { value: "11pt", label: "11pt body text", group: "size" },
+        ],
+        requiredPackages: ["biblatex", "csquotes", "babel", "graphicx"],
+        citationStyle: "apa",
+        license: {
+            spdx: "LPPL-1.3c",
+            url: "https://ctan.org/pkg/apa7",
+            redistributable: true,
+            notes: "apa7.cls is LPPL and community-maintained, not published by APA. Guidance text is written for this app from APA's public style rules.",
+        },
+        featured: true,
+        order: 12,
+    },
+    {
+        slug: "apa-professional-paper",
+        name: "APA Professional Paper (7th ed.)",
+        category: "journal-articles",
+        description:
+            "APA Style manuscript for journal submission: running head on every page, author note, abstract with keywords, five heading levels, (Author, Year) citations, and an alphabetical reference list.",
+        tags: ["apa", "apa-7", "manuscript", "psychology", "social-sciences", "journal"],
+        official: false,
+        content: apaProfessionalPaper(),
+        sections: APA_PROFESSIONAL_SECTIONS,
+        fields: APA_PROFESSIONAL_FIELDS,
+        engine: "pdflatex",
+        bibTool: "biber",
+        passes: 3,
+        entryFile: "main.tex",
+        documentClass: "apa7",
+        classOptions: [
+            { value: "man", label: "Manuscript (professional paper)", isDefault: true, group: "mode" },
+            { value: "letterpaper", label: "US Letter", isDefault: true, group: "paper" },
+            { value: "a4paper", label: "A4 paper", group: "paper" },
+            { value: "12pt", label: "12pt body text", isDefault: true, group: "size" },
+            { value: "11pt", label: "11pt body text", group: "size" },
+        ],
+        requiredPackages: ["biblatex", "csquotes", "babel", "graphicx"],
+        citationStyle: "apa",
+        license: {
+            spdx: "LPPL-1.3c",
+            url: "https://ctan.org/pkg/apa7",
+            redistributable: true,
+            notes: "apa7.cls is LPPL and community-maintained, not published by APA. Guidance text is written for this app from APA's public style rules.",
+        },
+        featured: true,
+        order: 13,
     },
 ];
 

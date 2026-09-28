@@ -6,7 +6,11 @@
   "exports": {
     "./provider": "./src/ConvexClientProvider.tsx",
     "./_generated/api": "./convex/_generated/api.js",
-    "./_generated/server": "./convex/_generated/server.js"
+    "./_generated/server": "./convex/_generated/server.js",
+    "./_generated/dataModel": "./convex/_generated/dataModel.d.ts",
+    "./chat/attachments": "./convex/lib/chatAttachments.ts",
+    "./chat/mentions": "./convex/lib/chatMentions.ts",
+    "./templates/catalog": "./convex/lib/templateCatalog.ts"
   },
   "scripts": {
     "dev": "convex dev",

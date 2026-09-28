@@ -6,6 +6,7 @@ import {
     getUserOrNull,
     requireAdmin,
     requireDocumentAccess,
+    requireDocumentAccessByRef,
     requireUser,
 } from "./lib/auth.js";
 import { applyFieldValues, slugify } from "./lib/templateContent.js";
@@ -335,5 +336,24 @@ export const getAllDocuments = query({
                 };
             })
         );
+    },
+});
+
+/**
+ * A served URL for a file already uploaded to storage.
+ *
+ * A storage id is not fetchable on its own — only the server can mint a URL
+ * for it — so an image placed in a figure has to come back through here before
+ * the document can reference it.
+ *
+ * The URL is written into the document rather than resolved on every render,
+ * which is what makes the figure survive a print, an export, or being read by
+ * anything that is not this app. Convex file URLs do not expire.
+ */
+export const resolveUploadUrl = mutation({
+    args: { documentId: v.string(), storageId: v.id("_storage") },
+    handler: async (ctx, args) => {
+        await requireDocumentAccessByRef(ctx, args.documentId);
+        return await ctx.storage.getUrl(args.storageId);
     },
 });

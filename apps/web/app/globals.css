@@ -399,6 +399,669 @@ body {
   line-height: 1.25;
 }
 
+/*
+ * In-text citation markers.
+ *
+ * The node itself holds the citation *key* and no text: the visible "[1]" is
+ * the IEEE number, which depends on where the citation sits in the document
+ * and so is resolved at render time by the CitationNumbering extension and
+ * drawn from here. Falling back to the key keeps the marker readable if the
+ * numbering has not run yet, rather than collapsing to an invisible span.
+ */
+.citation-mark::after {
+  content: "[" attr(data-citation) "]";
+}
+
+.citation-mark[data-citation-label]::after {
+  content: attr(data-citation-label);
+}
+
+/* Second and later markers of one bracket group: the leader drew them all. */
+.citation-mark[data-citation-hidden] {
+  display: none;
+}
+
+/*
+ * The comma the author typed between two grouped citations. The group's label
+ * already includes its own separators, so showing this one too would render
+ * "[1], [2]," — it is hidden rather than deleted, and reappears the moment the
+ * citations stop forming a group.
+ */
+.citation-separator {
+  display: none;
+}
+
+.citation-mark {
+  display: inline;
+  cursor: pointer;
+  border-radius: 0.2em;
+  padding: 0 0.1em;
+  color: var(--primary, #3b82f6);
+  background: color-mix(in srgb, var(--primary, #3b82f6) 10%, transparent);
+}
+
+/* Cited key is not in the bibliography — shown as [?] and flagged. */
+.citation-mark[data-citation-unresolved] {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.16);
+  text-decoration: underline dotted;
+}
+
+.ProseMirror-selectednode.citation-mark {
+  outline: 2px solid var(--primary, #3b82f6);
+  outline-offset: 1px;
+}
+
+/* On paper a citation is just text, not a chip. */
+.page-canvas .citation-mark {
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+
+/*
+ * Figures and tables — IEEE's floats.
+ *
+ * The number in a caption is not typed into the document. It is derived from
+ * where the float sits relative to the others, so it is computed by
+ * `FloatNumbering`, handed over as `data-float-label`, and drawn from here —
+ * the same arrangement the citation markers use, and for the same reason.
+ *
+ * The rules that matter, from IEEE's own guidance:
+ *   - a figure's caption goes BELOW it, a table's ABOVE it. That is enforced
+ *     by the nodes' content expressions, not by CSS, so it survives export;
+ *   - both captions are centred;
+ *   - figures count in Arabic ("Fig. 1."), tables in Roman ("TABLE I");
+ *   - the label is separated from the text by an em space.
+ */
+.float {
+  margin: 1em 0;
+  /* A float and its caption are one object and must not be split by a page or
+     column break — a caption stranded at the top of the next column is the
+     single most common defect in a typeset paper. */
+  break-inside: avoid;
+}
+
+.float-caption {
+  display: block;
+  text-align: center;
+  text-indent: 0;
+  margin: 0;
+}
+
+/* The label, drawn from the number the numbering pass worked out. The em space
+   is part of the generated content, so it copies out with the caption. */
+.float[data-float-label] > .float-caption::before {
+  content: attr(data-float-label) "\2003";
+}
+
+.float-figure > .float-caption {
+  margin-top: 0.5em;
+}
+
+/* A table's label sits on its own line above the title, which is why it is a
+   block rather than running in. */
+.float-table > .float-caption {
+  margin-bottom: 0.35em;
+}
+
+.float-table[data-float-label] > .float-caption::before {
+  content: attr(data-float-label);
+  display: block;
+  text-transform: uppercase;
+}
+
+.float img {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.float table {
+  margin: 0 auto;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.float th,
+.float td {
+  border: 1px solid #999;
+  padding: 0.3em 0.5em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.float th {
+  font-weight: 700;
+  text-align: center;
+}
+
+/* An empty figure: placed, captioned, not yet illustrated. */
+.float-figure img[src=""],
+.float-figure img:not([src]) {
+  min-height: 4rem;
+  width: 100%;
+  border: 1px dashed var(--border, #d4d4d8);
+  border-radius: 0.25rem;
+}
+
+.tiptap .float.ProseMirror-selectednode {
+  outline: 2px solid var(--primary, #3b82f6);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/*
+ * In-text cross-references — "as illustrated in Fig. 1".
+ *
+ * Like a citation, the node stores the float's id and no text; the label is
+ * recomputed on every change so that reordering the paper cannot leave the
+ * prose pointing at the wrong picture.
+ */
+.xref-mark::after {
+  content: attr(data-xref-label);
+}
+
+.xref-mark {
+  display: inline;
+  cursor: pointer;
+  border-radius: 0.2em;
+  padding: 0 0.1em;
+  color: var(--primary, #3b82f6);
+  background: color-mix(in srgb, var(--primary, #3b82f6) 10%, transparent);
+}
+
+/* The figure this points at has been deleted. Shown rather than hidden: only
+   the author can decide what it should have said. */
+.xref-mark[data-xref-dangling] {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.16);
+  text-decoration: underline dotted;
+}
+
+.xref-mark[data-xref-dangling]::after {
+  content: "[missing figure]";
+}
+
+.ProseMirror-selectednode.xref-mark {
+  outline: 2px solid var(--primary, #3b82f6);
+  outline-offset: 1px;
+}
+
+/* On paper a cross-reference is just text, not a chip. */
+.page-canvas .xref-mark {
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+
+/* Table editing affordances, which belong to the editor and never to paper. */
+.tiptap .selectedCell {
+  background: color-mix(in srgb, var(--primary, #3b82f6) 12%, transparent);
+}
+
+.tiptap .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--primary, #3b82f6);
+  pointer-events: none;
+}
+
+.tiptap .tableWrapper {
+  overflow-x: auto;
+}
+
+/* Fixed layout is what makes a column keep the width it was given rather
+   than the width its content asks for. */
+.tiptap table {
+  table-layout: fixed;
+}
+
+/* The resize handle is positioned against its cell. */
+.tiptap td,
+.tiptap th {
+  position: relative;
+}
+
+.tiptap.resize-cursor {
+  cursor: col-resize;
+}
+
+.tiptap.row-resize-cursor {
+  cursor: row-resize;
+}
+
+/*
+ * IEEE float typography. Captions are set a size smaller than the body, as
+ * IEEEtran does, and a table's body smaller still.
+ */
+.doc-ieee .tiptap .float-caption {
+  font-size: 0.8em;
+  line-height: 1.2;
+}
+
+.doc-ieee .tiptap .float table {
+  font-size: 0.8em;
+}
+
+.doc-ieee .tiptap .float th,
+.doc-ieee .tiptap .float td {
+  padding: 0.2em 0.4em;
+}
+
+/*
+ * A float set across both columns.
+ *
+ * Print honours this properly: CSS multi-column lifts the block out of the
+ * columns with `column-span: all`, which is what LaTeX's figure* does.
+ *
+ * The paged preview does not, and is deliberately left alone here. That view
+ * places every block into a column itself (`computeColumnLayout`), and it has
+ * no notion of a block that belongs to no column — forcing the width here
+ * would draw a full-measure figure at a column's horizontal offset, running it
+ * off the right edge of the page and leaving the blocks below it overlapping.
+ * A float that previews one column wide and prints two columns wide is a
+ * harmless inaccuracy in a view that already announces itself as approximate;
+ * a float drawn over the top of the next paragraph is not.
+ *
+ * The marker is so the author can see which floats will span on paper.
+ */
+.page-canvas--columns .float[data-span="page"] {
+  border-left: 2px solid color-mix(in srgb, var(--primary, #3b82f6) 45%, transparent);
+  padding-left: 0.5em;
+}
+
+/*
+ * The References section.
+ *
+ * The node in the document is empty — the entries are drawn from the
+ * bibliography, numbered by the order the text cites them — so everything
+ * visible here is generated, and none of it is editable. See
+ * `tiptap/BibliographyNode.ts`.
+ *
+ * The two-column grid is the hanging indent IEEE asks for: the bracketed
+ * number stands flush in the left margin, separated from the entry, and the
+ * entry wraps against its own left edge rather than tucking under the bracket.
+ * These class names are shared with the print stylesheet, so an entry that
+ * wraps on screen wraps the same way on paper.
+ */
+.bib-list {
+  list-style: none;
+  margin: 0.5em 0 0;
+  padding: 0;
+}
+
+.bib-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.5em;
+  /* Single-spaced entries, set apart by a little space rather than a gap. */
+  line-height: 1.35;
+  margin: 0 0 0.4em;
+  text-indent: 0;
+}
+
+.bib-marker {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Listed but never cited, so it has no number to stand behind. */
+.bib-uncited {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.bib-empty {
+  margin: 0.5em 0 0;
+  font-size: 0.85em;
+  font-style: italic;
+  text-indent: 0;
+  color: var(--muted-foreground, #6b7280);
+}
+
+/* The section is generated, so it is shown as a block the author can select
+   and delete whole rather than as text they can put a caret into. */
+.tiptap .bib {
+  padding: 0.25em 0;
+}
+
+.tiptap .bib.ProseMirror-selectednode {
+  outline: 2px solid var(--primary, #3b82f6);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* "References", centred and bold above the list. Matched by adjacency because
+   the heading is the author's own text and carries no marker. */
+.tiptap h1:has(+ .bib),
+.tiptap h2:has(+ .bib),
+.tiptap h3:has(+ .bib) {
+  text-align: center;
+  font-weight: 700;
+}
+
+/* IEEEtran sets it in centred small capitals like any other section heading,
+   not in bold, and sets the list itself a size smaller. */
+.doc-ieee .tiptap h2:has(+ .bib),
+.doc-ieee .tiptap h3:has(+ .bib) {
+  font-weight: 400;
+}
+
+.doc-ieee .tiptap .bib-list {
+  font-size: 0.9em;
+}
+
+.doc-ieee .tiptap .bib-item {
+  line-height: 1.25;
+}
+
+/*
+ * APA 7 typography — the student paper, following APA's Student Paper Setup
+ * Guide. Applied whenever the document's template is built on the apa7 class,
+ * in both views. `printDocument.ts` carries a parallel copy for paper.
+ *
+ *  - One font throughout, double-spaced everywhere, with no extra space before
+ *    or after paragraphs or headings.
+ *  - Paragraphs left-aligned with a ragged right margin, first line indented
+ *    0.5 in.
+ *  - Five heading levels, none numbered: 1 centred bold; 2 flush-left bold;
+ *    3 flush-left bold italic; 4 indented bold and 5 indented bold italic,
+ *    both run in to the paragraph that follows.
+ *
+ * The title page is everything before the first page break, the same kind of
+ * visible, movable convention the IEEE banner rule is: its lines are centred,
+ * the title sits three double-spaced lines down, and one blank line separates
+ * the title from the byline.
+ */
+.doc-apa .tiptap {
+  font-family: "Times New Roman", Times, Georgia, serif;
+  line-height: 2;
+  text-align: left;
+  hyphens: manual;
+}
+
+.doc-apa .tiptap h1,
+.doc-apa .tiptap h2,
+.doc-apa .tiptap h3,
+.doc-apa .tiptap h4,
+.doc-apa .tiptap h5 {
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 2;
+  margin: 0;
+}
+
+.doc-apa .tiptap h1 {
+  text-align: center;
+}
+
+.doc-apa .tiptap h3 {
+  font-style: italic;
+}
+
+/*
+ * Levels 4 and 5 are run-in headings: indented like a paragraph, with the
+ * paragraph's text continuing on the same line. A float does that without
+ * merging the two into one node, so each stays a real heading for navigation
+ * and screen readers. The pagination extension moves a floated heading with
+ * its paragraph.
+ */
+.doc-apa .tiptap h4,
+.doc-apa .tiptap h5 {
+  float: left;
+  margin: 0 0.3em 0 0.5in;
+  /* An empty heading still needs somewhere to put the caret. */
+  min-width: 1em;
+}
+
+.doc-apa .tiptap h5 {
+  font-style: italic;
+}
+
+.doc-apa .tiptap h4+p,
+.doc-apa .tiptap h5+p {
+  text-indent: 0;
+}
+
+.doc-apa .tiptap> :not(p) {
+  clear: both;
+}
+
+.doc-apa .tiptap p {
+  margin: 0;
+  line-height: 2;
+  text-indent: 0.5in;
+}
+
+/* The title page: everything before the first page break. First-of-type
+   rather than first-child, because a running head may come first. */
+.doc-apa .tiptap>h1:first-of-type {
+  margin-top: 6em;
+}
+
+.doc-apa .tiptap>p:not([data-page-break]~p) {
+  text-align: center;
+  text-indent: 0;
+}
+
+.doc-apa .tiptap>h1:not([data-page-break]~h1):not([data-apa-role])+p:not([data-page-break]~p) {
+  margin-top: 2em;
+}
+
+/* A professional title page's Author Note: a bold centred label with at
+   least one blank line above it (the paged view also keeps it in the bottom
+   half of the page), followed by ordinary left-aligned, indented paragraphs. */
+.doc-apa .tiptap>[data-apa-role="author-note"] {
+  margin-top: 2em;
+}
+
+.doc-apa .tiptap>[data-apa-role="author-note"]~p:not([data-page-break]~p) {
+  text-align: left;
+  text-indent: 0.5in;
+}
+
+/* The abstract's first line is flush left. */
+.doc-apa .tiptap>[data-apa-role="abstract"]+p {
+  text-indent: 0;
+}
+
+/*
+ * The running head. Stored as typed, shown in capitals. In the continuous
+ * view it is a labelled line at the top of the paper; in the paged view it
+ * sits in page one's header, and TipTap repeats it on every later page.
+ */
+.doc-apa .tiptap>p.running-head[data-running-head] {
+  text-align: left;
+  text-indent: 0;
+  text-transform: uppercase;
+  line-height: 1.5;
+}
+
+.doc-apa .tiptap>p.running-head[data-running-head]::before {
+  content: "Running head";
+  margin-right: 0.75em;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground, #6b7280);
+}
+
+.doc-apa .page-canvas .tiptap>p.running-head[data-running-head] {
+  position: absolute;
+  top: calc(var(--page-margin-top) / 2);
+  left: var(--page-margin-left);
+  right: calc(var(--page-margin-right) + 3em);
+  transform: translateY(-50%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-apa .page-canvas .tiptap>p.running-head[data-running-head]::before {
+  content: none;
+}
+
+/* Block quotations: the whole quote indented 0.5 in., still double-spaced,
+   and set in the body font rather than as a pull quote. A second paragraph
+   inside one is indented a further 0.5 in. */
+.doc-apa .tiptap blockquote {
+  border: none;
+  padding: 0;
+  margin: 0 0 0 0.5in;
+  font-style: normal;
+  color: inherit;
+}
+
+.doc-apa .tiptap blockquote p {
+  text-indent: 0;
+}
+
+.doc-apa .tiptap blockquote p+p {
+  text-indent: 0.5in;
+}
+
+.doc-apa .tiptap ul,
+.doc-apa .tiptap ol {
+  margin: 0;
+  padding-left: 0.5in;
+}
+
+.doc-apa .tiptap li {
+  margin: 0;
+}
+
+/*
+ * Tables and figures: "Table 1" / "Figure 1" in bold on its own line, then
+ * the title in italic title case, both flush left and both above the body —
+ * for a figure too, which the node stores caption-last for IEEE's sake, so the
+ * caption is moved up visually here. A blank double-spaced line separates a
+ * float from the text around it.
+ */
+.doc-apa .tiptap .float {
+  margin: 2em 0;
+}
+
+.doc-apa .tiptap .float-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.doc-apa .tiptap .float-figure>.float-caption {
+  order: -1;
+  align-self: stretch;
+}
+
+.doc-apa .tiptap .float-caption {
+  text-align: left;
+  font-style: italic;
+  line-height: 2;
+  margin: 0;
+}
+
+.doc-apa .tiptap .float[data-float-label]>.float-caption::before {
+  content: attr(data-float-label);
+  display: block;
+  font-weight: 700;
+  font-style: normal;
+  text-transform: none;
+}
+
+.doc-apa .tiptap .float img {
+  margin: 0;
+}
+
+/* Horizontal rules only: above and below the column headings, and at the
+   foot of the table. Cells may be single-, 1.5- or double-spaced; 1.5 reads
+   best on screen. */
+.doc-apa .tiptap .float table {
+  margin: 0;
+  border-top: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+}
+
+.doc-apa .tiptap .float th,
+.doc-apa .tiptap .float td {
+  border: none;
+  padding: 0 0.5em;
+}
+
+.doc-apa .tiptap .float th {
+  border-bottom: 1px solid currentColor;
+}
+
+.doc-apa .tiptap .float td p,
+.doc-apa .tiptap .float th p {
+  line-height: 1.5;
+  text-indent: 0;
+}
+
+/* The note under a table or figure: flush left, double-spaced, opening with an
+   italic "Note." that the editor draws rather than stores. */
+.float-note {
+  margin: 0.35em 0 0;
+  text-align: left;
+  text-indent: 0;
+  font-size: 0.85em;
+}
+
+.float-note::before {
+  content: "Note.\00a0";
+  font-style: italic;
+}
+
+.doc-apa .tiptap .float-note {
+  margin: 0;
+  font-size: 1em;
+  line-height: 2;
+  align-self: stretch;
+}
+
+/* "References" over a single entry reads "Reference"; see BibliographyNode. */
+.bib-heading-plural {
+  display: none;
+}
+
+/* References: alphabetical, double-spaced within and between entries, with a
+   0.5 in. hanging indent. */
+.doc-apa .tiptap .bib-list {
+  margin: 0;
+}
+
+.bib-item--hanging {
+  display: block;
+  padding-left: 0.5in;
+  text-indent: -0.5in;
+}
+
+.doc-apa .tiptap .bib-item--hanging {
+  line-height: 2;
+  margin: 0;
+}
+
+/* The page number in the header, top right, on every page. */
+.page-canvas__number {
+  position: absolute;
+  transform: translateY(-50%);
+  font-family: "Times New Roman", Times, Georgia, serif;
+  color: #111827;
+  pointer-events: none;
+  user-select: none;
+}
+
+.page-canvas__running-head {
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Temporarily hide the Liveblocks branding badge during local development */
 a[href*="liveblocks.io"] {
   display: none !important;

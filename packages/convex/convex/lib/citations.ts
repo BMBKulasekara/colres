@@ -21,14 +21,28 @@ export interface ReferenceLike {
     title: string;
     authors: string[];
     year?: number;
+    month?: number;
     venue?: string;
     publisher?: string;
+    address?: string;
     volume?: string;
     number?: string;
     pages?: string;
     doi?: string;
     url?: string;
+    accessed?: number;
+    edition?: string;
+    editors?: string[];
 }
+
+/**
+ * BibTeX month macros. They are written unbraced — `month = jan` — because
+ * that is what the .bst styles expect; a braced "1" would print as "1".
+ */
+const BIBTEX_MONTHS = [
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
+] as const;
 
 /** Surname from either "Ashish Vaswani" or "Vaswani, Ashish". */
 export function surnameOf(author: string): string {
@@ -89,6 +103,18 @@ function escapeBibtex(value: string): string {
     return value.replace(/[{}\\]/g, "\\$&").replace(/[&%$#_]/g, "\\$&");
 }
 
+function monthMacro(month: number | undefined): string | undefined {
+    if (!month || month < 1 || month > 12) return undefined;
+    return BIBTEX_MONTHS[month - 1];
+}
+
+/** "2022-07-18" — the shape biblatex's `urldate` expects. */
+function isoDate(timestamp: number | undefined): string | undefined {
+    if (!timestamp) return undefined;
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? undefined : date.toISOString().slice(0, 10);
+}
+
 /** Serialises one reference as a BibTeX entry. */
 export function toBibtexEntry(reference: ReferenceLike): string {
     const fields: [string, string | undefined][] = [
@@ -100,19 +126,26 @@ export function toBibtexEntry(reference: ReferenceLike): string {
                 : "journal",
             reference.venue,
         ],
+        ["editor", reference.editors?.length ? reference.editors.join(" and ") : undefined],
+        ["edition", reference.edition],
         ["publisher", reference.publisher],
+        ["address", reference.address],
         ["volume", reference.volume],
         ["number", reference.number],
         ["pages", reference.pages],
         ["year", reference.year ? String(reference.year) : undefined],
+        ["month", monthMacro(reference.month)],
         ["doi", reference.doi],
         ["url", reference.url],
+        ["urldate", isoDate(reference.accessed)],
     ];
 
     const body = fields
         .filter((entry): entry is [string, string] => Boolean(entry[1]))
         // `title` is pre-braced by protectCapitals, so escaping is skipped there.
+        // `month` is a macro name and must stay outside braces to resolve.
         .map(([key, value]) => {
+            if (key === "month") return `  ${key.padEnd(9)} = ${value}`;
             const rendered = key === "title" ? value : escapeBibtex(value);
             return `  ${key.padEnd(9)} = {${rendered}}`;
         })

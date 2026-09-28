@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { computePageLayout } from './pageLayout.ts';
+import { computePageLayout, computePageLayoutWithRunIns } from './pageLayout.ts';
 
 // A4 at 96dpi with one-inch margins and the 24px on-screen gutter.
 const PERIOD = 1123 + 24;
@@ -115,4 +115,45 @@ test('handles an empty document', () => {
 
   assert.deepEqual(layout.pushPx, []);
   assert.equal(layout.pageCount, 1);
+});
+
+test('a block with a minimum offset is held down to it within its page', () => {
+  const { pushPx } = computePageLayout(
+    [
+      { naturalTop: 0, height: 40, isHardBreak: false },
+      { naturalTop: 40, height: 40, isHardBreak: false, minOffsetInPage: 500 },
+      { naturalTop: 80, height: 40, isHardBreak: false },
+    ],
+    1100,
+    1000
+  );
+  assert.deepEqual(pushPx, [0, 460, 0]);
+});
+
+test('a run-in heading moves by margin with the paragraph it runs into', () => {
+  // Heading and paragraph share a top; the paragraph overflows page one.
+  const layout = computePageLayoutWithRunIns(
+    [
+      { naturalTop: 0, height: 960, isHardBreak: false },
+      { naturalTop: 960, height: 40, isHardBreak: false },
+      { naturalTop: 960, height: 80, isHardBreak: false },
+    ],
+    [false, true, false],
+    1100,
+    1000
+  );
+  assert.deepEqual(layout.pushPx, [0, 0, 140]);
+  assert.deepEqual(layout.marginPx, [0, 140, 0]);
+  assert.equal(layout.pageCount, 2);
+});
+
+test('a run-in heading with nothing after it is an ordinary block', () => {
+  const layout = computePageLayoutWithRunIns(
+    [{ naturalTop: 990, height: 40, isHardBreak: false }],
+    [true],
+    1100,
+    1000
+  );
+  assert.deepEqual(layout.pushPx, [110]);
+  assert.deepEqual(layout.marginPx, [0]);
 });

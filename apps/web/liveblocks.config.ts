@@ -1,5 +1,3 @@
-import type { LiveList } from '@liveblocks/client';
-
 // Define Liveblocks types for your application
 // https://liveblocks.io/docs/api-reference/liveblocks-react#Typing-your-data
 declare global {
@@ -11,16 +9,13 @@ declare global {
     };
 
     // The Storage tree for the room, for useMutation, useStorage, etc.
-    Storage: {
-      messages: LiveList<{
-        id: string;
-        text: string;
-        senderId: string;
-        senderName: string;
-        senderAvatar: string;
-        timestamp: number;
-      }>;
-    };
+    //
+    // Empty: the document text is a Yjs document handled by the Liveblocks
+    // TipTap extension, and team chat moved to Convex when messages gained
+    // attachments — Liveblocks Storage cannot hold a blob, and a message whose
+    // body lived here while its files lived in Convex would have two sources
+    // of truth with no way to settle a disagreement between them.
+    Storage: {};
 
     // Custom user info set when authenticating with a secret key
     UserMeta: {

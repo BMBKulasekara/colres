@@ -49,13 +49,18 @@ export const addReference = mutation({
         title: v.string(),
         authors: v.array(v.string()),
         year: v.optional(v.number()),
+        month: v.optional(v.number()),
         venue: v.optional(v.string()),
         publisher: v.optional(v.string()),
+        address: v.optional(v.string()),
         volume: v.optional(v.string()),
         number: v.optional(v.string()),
         pages: v.optional(v.string()),
         doi: v.optional(v.string()),
         url: v.optional(v.string()),
+        accessed: v.optional(v.number()),
+        edition: v.optional(v.string()),
+        editors: v.optional(v.array(v.string())),
         abstract: v.optional(v.string()),
         source: v.optional(sourceValidator),
         externalId: v.optional(v.string()),
@@ -94,13 +99,18 @@ export const addReference = mutation({
             title: args.title,
             authors: args.authors,
             year: args.year,
+            month: args.month,
             venue: args.venue,
             publisher: args.publisher,
+            address: args.address,
             volume: args.volume,
             number: args.number,
             pages: args.pages,
             doi: args.doi,
             url: args.url,
+            accessed: args.accessed,
+            edition: args.edition,
+            editors: args.editors?.length ? args.editors : undefined,
             abstract: args.abstract,
             source: args.source ?? "manual",
             externalId: args.externalId,
@@ -119,13 +129,18 @@ export const updateReference = mutation({
         title: v.optional(v.string()),
         authors: v.optional(v.array(v.string())),
         year: v.optional(v.number()),
+        month: v.optional(v.number()),
         venue: v.optional(v.string()),
         publisher: v.optional(v.string()),
+        address: v.optional(v.string()),
         volume: v.optional(v.string()),
         number: v.optional(v.string()),
         pages: v.optional(v.string()),
         doi: v.optional(v.string()),
         url: v.optional(v.string()),
+        accessed: v.optional(v.number()),
+        edition: v.optional(v.string()),
+        editors: v.optional(v.array(v.string())),
     },
     handler: async (ctx, args) => {
         const { id, ...updates } = args;
@@ -188,6 +203,22 @@ export const exportBibtex = query({
     },
 });
 
+/** Crossref people as display names, dropping entries with no name at all. */
+function personNames(
+    people:
+        | { given?: string | null; family?: string | null; name?: string | null }[]
+        | null
+        | undefined
+): string[] {
+    return (
+        people
+            ?.map((p) => p.name ?? [p.given, p.family].filter(Boolean).join(" "))
+            // An entry with neither a name nor a given/family pair yields an
+            // empty string, which would render as a blank name in a citation.
+            .filter((name) => name.trim().length > 0) ?? []
+    );
+}
+
 /**
  * Resolves a DOI to bibliographic metadata via Crossref.
  *
@@ -238,9 +269,12 @@ export const lookupDoi = action({
         type?: string | null;
         title?: string[] | null;
         author?: { given?: string | null; family?: string | null; name?: string | null }[] | null;
+        editor?: { given?: string | null; family?: string | null; name?: string | null }[] | null;
+        "edition-number"?: string | null;
         issued?: { "date-parts"?: (number | null)[][] | null } | null;
         "container-title"?: string[] | null;
         publisher?: string | null;
+        "publisher-location"?: string | null;
         volume?: string | null;
         issue?: string | null;
         page?: string | null;
@@ -264,7 +298,12 @@ export const lookupDoi = action({
       dissertation: "phdthesis",
     };
 
-    const year = work.issued?.["date-parts"]?.[0]?.[0];
+    // Crossref gives the issue date as [year, month, day], with the later
+    // parts simply absent when they are not known. IEEE prints the month in a
+    // journal reference, so it is worth taking whenever Crossref has one.
+    const issued = work.issued?.["date-parts"]?.[0];
+    const year = issued?.[0];
+    const month = issued?.[1];
 
     return {
       ok: true as const,
@@ -278,15 +317,19 @@ export const lookupDoi = action({
           | "phdthesis"
           | "misc",
         title: work.title?.[0] ?? "Untitled",
-        authors:
-          work.author
-            ?.map((a) => a.name ?? [a.given, a.family].filter(Boolean).join(" "))
-            // An entry with neither a name nor a given/family pair yields an
-            // empty string, which would render as a blank author in a citation.
-            .filter((name) => name.trim().length > 0) ?? [],
+        authors: personNames(work.author),
+        // Only meaningful for a chapter or paper in an edited book; for an
+        // article Crossref's editors are the journal's, which no style prints.
+        editors:
+          work.type === "book-chapter" || work.type === "proceedings-article"
+            ? personNames(work.editor)
+            : [],
+        edition: optionalText(work["edition-number"]),
         year: typeof year === "number" ? year : undefined,
+        month: typeof month === "number" && month >= 1 && month <= 12 ? month : undefined,
         venue: optionalText(work["container-title"]?.[0]),
         publisher: optionalText(work.publisher),
+        address: optionalText(work["publisher-location"]),
         volume: optionalText(work.volume),
         number: optionalText(work.issue),
         pages: optionalText(work.page),

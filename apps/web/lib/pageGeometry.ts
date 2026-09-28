@@ -41,7 +41,7 @@ export interface PageMargins {
  * the column count: a single-column IEEE peer-review manuscript still wants
  * IEEE's Roman section numbering and Times measure.
  */
-export type DocumentStyleId = 'default' | 'ieee';
+export type DocumentStyleId = 'default' | 'ieee' | 'apa';
 
 export interface PageGeometry {
   id: 'a4' | 'letter';
@@ -65,6 +65,8 @@ export interface PageGeometry {
   /** Width of a single column. Equals `contentWidthPx` in one-column layouts. */
   columnWidthPx: number;
   styleId: DocumentStyleId;
+  /** True when every page carries its number in the top-right of the header. */
+  pageNumbers: boolean;
 }
 
 const PAGE_SIZES = {
@@ -84,6 +86,10 @@ interface LayoutPreset {
   columnGapIn: number;
   /** Body size the class sets. IEEE is 10pt regardless of the class options. */
   bodyPt?: number;
+  /** Body size when the class options name none. */
+  defaultBodyPt?: number;
+  /** Draws the page number in the top-right corner of every page. */
+  pageNumbers?: boolean;
 }
 
 /**
@@ -121,6 +127,23 @@ const IEEE_PRESET: LayoutPreset = {
   },
   columnGapIn: 0.17,
   bodyPt: 10,
+};
+
+/**
+ * APA 7 student and professional papers: 1 in. margins on every side, one
+ * column, and a page number in the top-right corner of every page, the title
+ * page included. 12pt Times New Roman is the conventional default; the `11pt`
+ * class option covers APA's 11pt alternatives (Calibri, Arial, Georgia).
+ */
+const APA_PRESET: LayoutPreset = {
+  styleId: 'apa',
+  margins: {
+    a4: { top: 1, right: 1, bottom: 1, left: 1 },
+    letter: { top: 1, right: 1, bottom: 1, left: 1 },
+  },
+  columnGapIn: 0,
+  defaultBodyPt: 12,
+  pageNumbers: true,
 };
 
 const DEFAULT_BODY_PT = 11;
@@ -171,6 +194,7 @@ function buildGeometry(
     columnGapPx,
     columnWidthPx,
     styleId: preset.styleId,
+    pageNumbers: preset.pageNumbers ?? false,
   };
 }
 
@@ -182,7 +206,14 @@ function buildGeometry(
 const IEEE_ONE_COLUMN_MODES = new Set(['peerreview', 'peerreviewca', 'draftcls', 'draftclsnofoot']);
 
 function resolvePreset(documentClass?: string | null): LayoutPreset {
-  return documentClass?.trim().toLowerCase() === 'ieeetran' ? IEEE_PRESET : DEFAULT_PRESET;
+  switch (documentClass?.trim().toLowerCase()) {
+    case 'ieeetran':
+      return IEEE_PRESET;
+    case 'apa7':
+      return APA_PRESET;
+    default:
+      return DEFAULT_PRESET;
+  }
 }
 
 function resolveColumns(preset: LayoutPreset, options: readonly string[]): 1 | 2 {
@@ -213,7 +244,13 @@ export function getPageGeometry(
 
   const bodyPt =
     preset.bodyPt ??
-    (options.includes('12pt') ? 12 : options.includes('10pt') ? 10 : DEFAULT_BODY_PT);
+    (options.includes('12pt')
+      ? 12
+      : options.includes('11pt')
+        ? 11
+        : options.includes('10pt')
+          ? 10
+          : (preset.defaultBodyPt ?? DEFAULT_BODY_PT));
 
   return buildGeometry(id, bodyPt, preset, resolveColumns(preset, options));
 }
