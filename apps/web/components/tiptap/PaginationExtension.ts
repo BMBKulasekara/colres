@@ -4,7 +4,12 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { DEFAULT_PAGE_GEOMETRY, type PageGeometry } from '../../lib/pageGeometry';
-import { computeColumnLayout, computePageLayout, EPSILON, type MeasuredBlock } from './pageLayout';
+import {
+  computeColumnLayout,
+  computePageLayoutWithRunIns,
+  EPSILON,
+  type MeasuredBlock,
+} from './pageLayout';
 
 /**
  * Word-style page simulation for a single continuous ProseMirror document.
@@ -160,6 +165,12 @@ function measure(view: EditorView, options: PaginationOptions, storage: Paginati
 
   const positions: Block[] = [];
   const measured: MeasuredBlock[] = [];
+  /**
+   * Blocks floated into the start of the block after them — APA's run-in
+   * Level 4 and 5 headings. They share a line with that paragraph, so on the
+   * page they are not blocks of their own: they go wherever it goes.
+   */
+  const runIn: boolean[] = [];
 
   const paddingTop = Number.parseFloat(getComputedStyle(dom).paddingTop) || 0;
   const originTop = dom.getBoundingClientRect().top + dom.clientTop + paddingTop;
@@ -183,7 +194,13 @@ function measure(view: EditorView, options: PaginationOptions, storage: Paginati
       naturalTop: rect.top - originTop,
       height: rect.height,
       isHardBreak: node.type.name === 'pageBreak',
+      // APA's Author Note sits in the bottom half of the title page.
+      minOffsetInPage:
+        element.getAttribute('data-apa-role') === 'author-note'
+          ? geometry.contentHeightPx / 2
+          : undefined,
     });
+    runIn.push(!isColumnFlow && getComputedStyle(element).float !== 'none');
   });
 
   if (!mappingIsSound) {
@@ -224,16 +241,25 @@ function measure(view: EditorView, options: PaginationOptions, storage: Paginati
       );
     });
   } else {
-    const layout = computePageLayout(measured, period, geometry.contentHeightPx);
+    // Run-in headings follow the paragraph they sit in; see
+    // computePageLayoutWithRunIns for why they are moved by margin.
+    const layout = computePageLayoutWithRunIns(measured, runIn, period, geometry.contentHeightPx);
 
     pageCount = layout.pageCount;
 
-    layout.pushPx.forEach((push, index) => {
-      const block = positions[index];
-      if (!block || push <= 0) return;
-      decorations.push(
-        Decoration.node(block.pos, block.pos + block.size, { style: `padding-top:${push}px` })
-      );
+    positions.forEach((block, index) => {
+      const push = layout.pushPx[index] ?? 0;
+      const margin = layout.marginPx[index] ?? 0;
+      if (push > 0) {
+        decorations.push(
+          Decoration.node(block.pos, block.pos + block.size, { style: `padding-top:${push}px` })
+        );
+      }
+      if (margin > 0) {
+        decorations.push(
+          Decoration.node(block.pos, block.pos + block.size, { style: `margin-top:${margin}px` })
+        );
+      }
     });
   }
 

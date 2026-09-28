@@ -63,8 +63,10 @@ function renderFieldValue(value: string, type: TemplateFieldType): string {
                 .map((part) => part.trim())
                 .filter(Boolean)
                 .map(escapeHtml);
-            return parts.join(type === "authors" ? ", " : ", ");
+            return type === "authors" ? byline(parts) : parts.join(", ");
         }
+        case "date":
+            return escapeHtml(formatDate(trimmed));
         case "textarea":
             // Preserve paragraph breaks, since a textarea is multi-line.
             return trimmed
@@ -74,6 +76,45 @@ function renderFieldValue(value: string, type: TemplateFieldType): string {
         default:
             return escapeHtml(trimmed);
     }
+}
+
+/**
+ * Names joined the way a byline reads: "A and B", or "A, B, and C" with the
+ * serial comma. This is what APA's title page asks for, and it reads naturally
+ * in every other template's author line too.
+ */
+function byline(names: string[]): string {
+    if (names.length <= 1) return names[0] ?? "";
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+const MONTHS = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
+
+/**
+ * A date picker's "2025-10-01" as "October 1, 2025" — month spelled out, as
+ * APA asks for on the title page. Anything else is left exactly as typed, so a
+ * date an author wrote in their own country's format is not second-guessed.
+ */
+function formatDate(value: string): string {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return value;
+    const [, year, month, day] = match;
+    const name = MONTHS[Number(month) - 1];
+    return name ? `${name} ${Number(day)}, ${year}` : value;
 }
 
 /**

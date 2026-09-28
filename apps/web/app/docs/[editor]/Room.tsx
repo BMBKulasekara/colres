@@ -1,6 +1,5 @@
 'use client';
 
-import { LiveList } from '@liveblocks/client';
 import { ClientSideSuspense, LiveblocksProvider, RoomProvider } from '@liveblocks/react/suspense';
 import type { ReactNode } from 'react';
 
@@ -37,12 +36,11 @@ export function Room({ roomId, children }: { roomId: string; children: ReactNode
         }
       }}
     >
-      <RoomProvider
-        id={roomId}
-        initialStorage={{
-          messages: new LiveList([]),
-        }}
-      >
+      {/* No initialStorage: team chat used to keep its messages in a
+          Liveblocks LiveList and now keeps them in Convex, which is where the
+          attachments and reactions have to live. Rooms created before that
+          still carry the old list; nothing reads it. */}
+      <RoomProvider id={roomId}>
         <ClientSideSuspense
           fallback={
             <div className="min-h-screen flex items-center justify-center bg-muted/10">

@@ -26,6 +26,12 @@ export interface MeasuredBlock {
   naturalTop: number;
   height: number;
   isHardBreak: boolean;
+  /**
+   * The highest the block may start within its page, measured from the top
+   * of the writable area. APA's Author Note uses it to sit in the bottom half
+   * of the title page however short the page above it is.
+   */
+  minOffsetInPage?: number;
 }
 
 export interface PageLayout {
@@ -71,6 +77,15 @@ export function computePageLayout(
     }
     forcedTop = null;
 
+    if (block.minOffsetInPage !== undefined) {
+      const anchor =
+        Math.max(0, Math.floor(finalTop / period + FLOOR_BIAS)) * period + block.minOffsetInPage;
+      if (finalTop < anchor - EPSILON) {
+        push += anchor - finalTop;
+        finalTop = anchor;
+      }
+    }
+
     const page = Math.max(0, Math.floor(finalTop / period + FLOOR_BIAS));
     const pageBottom = page * period + contentHeight;
 
@@ -101,6 +116,54 @@ export function computePageLayout(
   }
 
   return { pushPx, pageCount: lastPage + 1 };
+}
+
+export interface RunInPageLayout extends PageLayout {
+  /** `marginPx[i]` is the top margin to add to run-in block `i`; zero otherwise. */
+  marginPx: number[];
+}
+
+/**
+ * `computePageLayout` for a flow containing run-in blocks — APA's Level 4 and
+ * 5 headings, floated into the start of the paragraph after them.
+ *
+ * A run-in block shares its first line with that paragraph, so it is not a
+ * block of its own on the page: it is left out of the arithmetic and goes
+ * wherever the paragraph goes. It cannot be moved the same way, though.
+ * Padding on the paragraph does not move a float that precedes it; but the
+ * float's top margin starts where the paragraph's box starts, so the same
+ * amount applied as margin keeps the two on one line.
+ *
+ * `runIn[i]` marks block `i` as run-in. A run-in block with nothing after it
+ * is treated as an ordinary block.
+ */
+export function computePageLayoutWithRunIns(
+  blocks: readonly MeasuredBlock[],
+  runIn: readonly boolean[],
+  period: number,
+  contentHeight: number
+): RunInPageLayout {
+  const glued = blocks.map((_, index) => Boolean(runIn[index]) && index < blocks.length - 1);
+  const flowIndex = blocks.map((_, index) => index).filter((index) => !glued[index]);
+
+  const layout = computePageLayout(
+    flowIndex.map((index) => blocks[index] as MeasuredBlock),
+    period,
+    contentHeight
+  );
+
+  const pushPx: number[] = new Array(blocks.length).fill(0);
+  const marginPx: number[] = new Array(blocks.length).fill(0);
+
+  layout.pushPx.forEach((push, flowPosition) => {
+    const index = flowIndex[flowPosition] as number;
+    pushPx[index] = push;
+    for (let previous = index - 1; previous >= 0 && glued[previous]; previous--) {
+      marginPx[previous] = push;
+    }
+  });
+
+  return { pushPx, marginPx, pageCount: layout.pageCount };
 }
 
 /* -------------------------------------------------------------------------- */
