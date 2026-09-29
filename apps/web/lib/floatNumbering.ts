@@ -82,8 +82,10 @@ export const EM_SPACE = ' ';
  * `apa` writes "Figure 1" and "Table 1" — both spelled out, both in Arabic —
  * in the caption and in the prose alike; the label sits in bold on its own
  * line above the italic title.
+ * `mla` writes "Fig. 1." under a figure and "Table 1" above a table, both in
+ * Arabic, and "fig. 1" / "table 1" in the prose, lowercase as in "(see fig. 1)".
  */
-export type FloatScheme = 'ieee' | 'apa';
+export type FloatScheme = 'ieee' | 'apa' | 'mla';
 
 /**
  * What a caption starts with.
@@ -98,6 +100,7 @@ export function captionLabel(
   scheme: FloatScheme = 'ieee'
 ): string {
   if (scheme === 'apa') return referenceLabel(kind, number, scheme);
+  if (scheme === 'mla') return kind === 'figure' ? `Fig. ${number}.` : `Table ${number}`;
   return kind === 'figure' ? `Fig. ${number}.` : `TABLE ${toRoman(number)}`;
 }
 
@@ -114,6 +117,7 @@ export function referenceLabel(
   scheme: FloatScheme = 'ieee'
 ): string {
   if (scheme === 'apa') return kind === 'figure' ? `Figure ${number}` : `Table ${number}`;
+  if (scheme === 'mla') return kind === 'figure' ? `fig. ${number}` : `table ${number}`;
   return kind === 'figure' ? `Fig. ${number}` : `Table ${toRoman(number)}`;
 }
 

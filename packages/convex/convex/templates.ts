@@ -37,6 +37,7 @@ const fieldValidator = v.object({
     placeholder: v.string(),
     defaultValue: v.optional(v.string()),
     help: v.optional(v.string()),
+    dateStyle: v.optional(v.union(v.literal("month-day-year"), v.literal("day-month-year"))),
 });
 
 const classOptionValidator = v.object({

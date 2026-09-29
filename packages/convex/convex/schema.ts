@@ -27,7 +27,9 @@ export const citationStyleValidator = v.union(
   v.literal("acm"),
   v.literal("vancouver"),
   v.literal("chicago"),
-  v.literal("numeric")
+  v.literal("numeric"),
+  v.literal("harvard"),
+  v.literal("mla")
 );
 
 /** Mirrors the Overleaf gallery taxonomy so the categories are familiar. */
@@ -65,6 +67,12 @@ export default defineSchema({
     status: v.boolean(),
     content: v.string(),
     description: v.optional(v.string()),
+    /**
+     * The citation style the author chose for this document, overriding the
+     * one its template came with. Switching it changes both the in-text
+     * citations and the reference list; the template snapshot is untouched.
+     */
+    citationStyle: v.optional(citationStyleValidator),
     createdAt: v.number(),
     updatedAt: v.number(),
 
@@ -273,6 +281,8 @@ export default defineSchema({
         placeholder: v.string(),
         defaultValue: v.optional(v.string()),
         help: v.optional(v.string()),
+        /** A `date` field's order: APA's "October 1, 2025" or MLA's "1 October 2025". */
+        dateStyle: v.optional(v.union(v.literal("month-day-year"), v.literal("day-month-year"))),
       })
     ),
 
@@ -385,7 +395,8 @@ export default defineSchema({
       v.literal("openalex"),
       v.literal("doi"),
       v.literal("manual"),
-      v.literal("bibtex")
+      v.literal("bibtex"),
+      v.literal("pdf")
     ),
     /** OpenAlex work id, so a saved suggestion is not added twice. */
     externalId: v.optional(v.string()),

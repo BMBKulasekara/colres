@@ -18,7 +18,8 @@ const sourceValidator = v.union(
     v.literal("openalex"),
     v.literal("doi"),
     v.literal("manual"),
-    v.literal("bibtex")
+    v.literal("bibtex"),
+    v.literal("pdf")
 );
 
 export const listReferences = query({
@@ -78,7 +79,7 @@ export const addReference = mutation({
                     q.eq("documentId", args.documentId).eq("externalId", args.externalId)
                 )
                 .first();
-            if (duplicate) return duplicate._id;
+            if (duplicate) return { id: duplicate._id, citationKey: duplicate.citationKey };
         }
 
         const taken = await ctx.db
@@ -93,7 +94,9 @@ export const addReference = mutation({
         );
 
         const now = Date.now();
-        return await ctx.db.insert("references", {
+        // The key comes back with the id so a caller can cite the new entry
+        // straight away — "Add & insert citation" does.
+        const id = await ctx.db.insert("references", {
             documentId: args.documentId,
             citationKey,
             type: args.type ?? "article",
@@ -120,6 +123,7 @@ export const addReference = mutation({
             createdAt: now,
             updatedAt: now,
         });
+        return { id, citationKey };
     },
 });
 
@@ -206,20 +210,124 @@ export const exportBibtex = query({
     },
 });
 
-/** Crossref people as display names, dropping entries with no name at all. */
-function personNames(
-    people:
-        | { given?: string | null; family?: string | null; name?: string | null }[]
-        | null
-        | undefined
-): string[] {
+type CrossrefPerson = { given?: string | null; family?: string | null; name?: string | null };
+
+/**
+ * Crossref people as display names, dropping entries with no name at all.
+ *
+ * An organisation comes back as a single `name` rather than a given/family
+ * pair, and is braced — "{World Health Organization}" — which is how the
+ * formatters recognise a group author and keep it from being inverted.
+ */
+function personNames(people: CrossrefPerson[] | null | undefined): string[] {
     return (
         people
-            ?.map((p) => p.name ?? [p.given, p.family].filter(Boolean).join(" "))
+            ?.map((p) => (p.name ? `{${p.name.trim()}}` : [p.given, p.family].filter(Boolean).join(" ")))
             // An entry with neither a name nor a given/family pair yields an
             // empty string, which would render as a blank name in a citation.
-            .filter((name) => name.trim().length > 0) ?? []
+            .filter((name) => name.replace(/[{}]/g, "").trim().length > 0) ?? []
     );
+}
+
+/**
+ * A Crossref work record. Crossref nulls rather than omits in places — notably
+ * `date-parts`, which is `[[null]]` for a work with no known date. The mapped
+ * result is spread straight into `addReference`, whose `v.optional()`
+ * validators accept `undefined` but reject `null`, so every nullable field is
+ * declared as one and converted in `crossrefToReference`.
+ */
+type CrossrefWork = {
+    type?: string | null;
+    title?: string[] | null;
+    author?: CrossrefPerson[] | null;
+    editor?: CrossrefPerson[] | null;
+    "edition-number"?: string | null;
+    issued?: { "date-parts"?: (number | null)[][] | null } | null;
+    "container-title"?: string[] | null;
+    publisher?: string | null;
+    "publisher-location"?: string | null;
+    volume?: string | null;
+    issue?: string | null;
+    page?: string | null;
+    "article-number"?: string | null;
+    DOI?: string | null;
+    URL?: string | null;
+};
+
+type ReferenceType =
+    | "article"
+    | "inproceedings"
+    | "book"
+    | "incollection"
+    | "techreport"
+    | "phdthesis"
+    | "misc";
+
+// Crossref type names do not map one-to-one onto BibTeX entry types.
+const CROSSREF_TYPES: Record<string, ReferenceType> = {
+    "journal-article": "article",
+    "proceedings-article": "inproceedings",
+    book: "book",
+    monograph: "book",
+    "edited-book": "book",
+    "book-chapter": "incollection",
+    report: "techreport",
+    dissertation: "phdthesis",
+    "posted-content": "misc",
+};
+
+/**
+ * Crossref titles sometimes carry markup ("<i>Apis</i>") and a closing full
+ * stop that is not part of the title; each style adds its own punctuation.
+ */
+function cleanTitle(title: string | null | undefined): string | undefined {
+    const text = title
+        ?.replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/(?<!\.\.)\.$/, "");
+    return text || undefined;
+}
+
+/** A Crossref work as the fields `addReference` takes. */
+function crossrefToReference(work: CrossrefWork, fallbackDoi?: string) {
+    // Crossref gives the issue date as [year, month, day], with the later
+    // parts simply absent when they are not known. IEEE prints the month in a
+    // journal reference, so it is worth taking whenever Crossref has one.
+    const issued = work.issued?.["date-parts"]?.[0];
+    const year = issued?.[0];
+    const month = issued?.[1];
+
+    return {
+        type: CROSSREF_TYPES[work.type ?? ""] ?? "misc",
+        title: cleanTitle(work.title?.[0]) ?? "Untitled",
+        authors: personNames(work.author),
+        // Only meaningful for a chapter or paper in an edited book; for an
+        // article Crossref's editors are the journal's, which no style prints.
+        editors:
+            work.type === "book-chapter" || work.type === "proceedings-article"
+                ? personNames(work.editor)
+                : [],
+        edition: optionalText(work["edition-number"]),
+        year: typeof year === "number" ? year : undefined,
+        month: typeof month === "number" && month >= 1 && month <= 12 ? month : undefined,
+        venue: cleanTitle(work["container-title"]?.[0]),
+        publisher: optionalText(work.publisher),
+        address: optionalText(work["publisher-location"]),
+        volume: optionalText(work.volume),
+        number: optionalText(work.issue),
+        // An article-numbered journal has no page range; APA prints "Article e0193972".
+        pages:
+            optionalText(work.page) ??
+            (optionalText(work["article-number"]) ? `Article ${work["article-number"]}` : undefined),
+        doi: optionalText(work.DOI) ?? fallbackDoi,
+        url: optionalText(work.URL),
+    };
+}
+
+function crossrefHeaders() {
+    const mailto = process.env.OPENALEX_MAILTO ?? "support@colres.app";
+    return { mailto, headers: { "User-Agent": `colres (mailto:${mailto})` } };
 }
 
 /**
@@ -246,10 +354,10 @@ export const lookupDoi = action({
       return { ok: false as const, error: "That does not look like a DOI." };
     }
 
-    const mailto = process.env.OPENALEX_MAILTO ?? "support@colres.app";
+    const { mailto, headers } = crossrefHeaders();
     const response = await fetch(
       `https://api.crossref.org/works/${encodeURIComponent(doi)}?mailto=${encodeURIComponent(mailto)}`,
-      { headers: { "User-Agent": `colres (mailto:${mailto})` } }
+      { headers }
     );
 
     if (response.status === 404) {
@@ -262,83 +370,56 @@ export const lookupDoi = action({
       };
     }
 
-    // Crossref nulls rather than omits in places — notably `date-parts`, which
-    // is `[[null]]` for a work with no known date. The result of this lookup is
-    // spread straight into `addReference`, whose `v.optional()` validators
-    // accept `undefined` but reject `null`, so every nullable field has to be
-    // declared as one and converted below.
-    const body = (await response.json()) as {
-      message?: {
-        type?: string | null;
-        title?: string[] | null;
-        author?: { given?: string | null; family?: string | null; name?: string | null }[] | null;
-        editor?: { given?: string | null; family?: string | null; name?: string | null }[] | null;
-        "edition-number"?: string | null;
-        issued?: { "date-parts"?: (number | null)[][] | null } | null;
-        "container-title"?: string[] | null;
-        publisher?: string | null;
-        "publisher-location"?: string | null;
-        volume?: string | null;
-        issue?: string | null;
-        page?: string | null;
-        DOI?: string | null;
-        URL?: string | null;
-      };
-    };
-
+    const body = (await response.json()) as { message?: CrossrefWork };
     const work = body.message;
     if (!work) {
       return { ok: false as const, error: "The DOI service returned no record." };
     }
 
-    // Crossref type names do not map one-to-one onto BibTeX entry types.
-    const typeMap: Record<string, string> = {
-      "journal-article": "article",
-      "proceedings-article": "inproceedings",
-      book: "book",
-      "book-chapter": "incollection",
-      "report": "techreport",
-      dissertation: "phdthesis",
-    };
+    return { ok: true as const, reference: crossrefToReference(work, doi) };
+  },
+});
 
-    // Crossref gives the issue date as [year, month, day], with the later
-    // parts simply absent when they are not known. IEEE prints the month in a
-    // journal reference, so it is worth taking whenever Crossref has one.
-    const issued = work.issued?.["date-parts"]?.[0];
-    const year = issued?.[0];
-    const month = issued?.[1];
+/**
+ * Finds published works matching a title (and, optionally, an author's
+ * surname) — used when a PDF carries no DOI of its own.
+ *
+ * Returns up to five candidates, best first by Crossref's own ranking. It does
+ * not decide whether any of them *is* the paper: the caller compares titles,
+ * because a search always returns something, and a confident wrong match is
+ * worse than none.
+ */
+export const searchWorksByTitle = action({
+  args: { title: v.string(), author: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Unauthenticated: no verified identity on this request");
+    }
 
+    const title = args.title.trim();
+    if (title.length < 8) return { ok: true as const, candidates: [] };
+
+    const { mailto, headers } = crossrefHeaders();
+    const params = new URLSearchParams({
+      "query.bibliographic": title.slice(0, 300),
+      rows: "5",
+      mailto,
+    });
+    if (args.author?.trim()) params.set("query.author", args.author.trim());
+
+    const response = await fetch(`https://api.crossref.org/works?${params}`, { headers });
+    if (!response.ok) {
+      return {
+        ok: false as const,
+        error: `The search service returned ${response.status}. Try again shortly.`,
+      };
+    }
+
+    const body = (await response.json()) as { message?: { items?: CrossrefWork[] | null } };
     return {
       ok: true as const,
-      reference: {
-        type: (typeMap[work.type ?? ""] ?? "misc") as
-          | "article"
-          | "inproceedings"
-          | "book"
-          | "incollection"
-          | "techreport"
-          | "phdthesis"
-          | "misc",
-        title: work.title?.[0] ?? "Untitled",
-        authors: personNames(work.author),
-        // Only meaningful for a chapter or paper in an edited book; for an
-        // article Crossref's editors are the journal's, which no style prints.
-        editors:
-          work.type === "book-chapter" || work.type === "proceedings-article"
-            ? personNames(work.editor)
-            : [],
-        edition: optionalText(work["edition-number"]),
-        year: typeof year === "number" ? year : undefined,
-        month: typeof month === "number" && month >= 1 && month <= 12 ? month : undefined,
-        venue: optionalText(work["container-title"]?.[0]),
-        publisher: optionalText(work.publisher),
-        address: optionalText(work["publisher-location"]),
-        volume: optionalText(work.volume),
-        number: optionalText(work.issue),
-        pages: optionalText(work.page),
-        doi: optionalText(work.DOI) ?? doi,
-        url: optionalText(work.URL),
-      },
+      candidates: (body.message?.items ?? []).map((work) => crossrefToReference(work)),
     };
   },
 });

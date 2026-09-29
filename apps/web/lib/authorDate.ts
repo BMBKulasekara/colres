@@ -15,6 +15,7 @@
  */
 
 import {
+  type CitationStyle,
   type DisplayReference,
   initials,
   isGroupAuthor,
@@ -59,8 +60,11 @@ function nameTokens(reference: DisplayReference): string[] {
  *    two-author entry that starts with the same person);
  *  - same authors: undated works first, then oldest to newest;
  *  - same authors and year: by title.
+ *
+ * Harvard files the same way. MLA does not use the year at all: works by the
+ * same authors are ordered by title (`byYear = false`).
  */
-export function compareAuthorDate(a: DisplayReference, b: DisplayReference): number {
+export function compareAuthorDate(a: DisplayReference, b: DisplayReference, byYear = true): number {
   const ta = nameTokens(a);
   const tb = nameTokens(b);
 
@@ -72,14 +76,18 @@ export function compareAuthorDate(a: DisplayReference, b: DisplayReference): num
 
   const ya = a.year ?? Number.NEGATIVE_INFINITY;
   const yb = b.year ?? Number.NEGATIVE_INFINITY;
-  if (ya !== yb) return ya < yb ? -1 : 1;
+  if (byYear && ya !== yb) return ya < yb ? -1 : 1;
 
   return collator.compare(titleSortKey(a.title), titleSortKey(b.title));
 }
 
-/** The reference list in APA order. Returns a new array. */
-export function sortAuthorDate<T extends DisplayReference>(references: readonly T[]): T[] {
-  return [...references].sort(compareAuthorDate);
+/** The reference list in alphabetical order for `style`. Returns a new array. */
+export function sortAuthorDate<T extends DisplayReference>(
+  references: readonly T[],
+  style: CitationStyle = 'apa'
+): T[] {
+  const byYear = style !== 'mla';
+  return [...references].sort((a, b) => compareAuthorDate(a, b, byYear));
 }
 
 /**
@@ -243,19 +251,31 @@ function citedName(author: string, withInitials: boolean): string {
 export function inTextName(
   reference: DisplayReference,
   narrative = false,
-  form: NameForm = {}
+  form: NameForm = {},
+  style: CitationStyle = 'apa'
 ): string {
   const { authors } = reference;
   if (authors.length === 0) {
+    // Harvard keeps the title as entered and quotes it the British way.
+    if (style === 'harvard') {
+      const title = stripBraces(reference.title).trim();
+      return QUOTED_TITLE_TYPES.has(reference.type ?? 'misc') ? `'${title}'` : title;
+    }
     const title = toTitleCase(reference.title.trim());
     return QUOTED_TITLE_TYPES.has(reference.type ?? 'misc') ? `"${title}"` : title;
   }
 
-  const joiner = narrative ? 'and' : '&';
   const names = authors.map((author, index) =>
     citedName(author, index === 0 && Boolean(form.withInitials))
   );
 
+  // Cite Them Right Harvard: "and" everywhere, all names up to three, then
+  // "et al." from four authors.
+  if (style === 'harvard') {
+    return names.length <= 3 ? listNames(names, 'and', false) : `${names[0]} et al.`;
+  }
+
+  const joiner = narrative ? 'and' : '&';
   if (names.length === 1) return names[0] as string;
   if (names.length === 2) return `${names[0]} ${joiner} ${names[1]}`;
 
@@ -289,6 +309,13 @@ function abbreviatedGroup(reference: DisplayReference): string | undefined {
   return lower(surname(author));
 }
 
+/** "A", "A and B", "A, B and C" (or "A, B, and C" with `serialComma`). */
+function listNames(names: string[], joiner: string, serialComma: boolean): string {
+  if (names.length <= 1) return names[0] ?? '';
+  if (names.length === 2) return `${names[0]} ${joiner} ${names[1]}`;
+  return `${names.slice(0, -1).join(', ')}${serialComma ? ',' : ''} ${joiner} ${names[names.length - 1]}`;
+}
+
 /**
  * The name followed by the comma that separates it from the year. A quoted
  * title takes the comma inside its closing quotation mark, as American
@@ -299,8 +326,14 @@ function withComma(name: string): string {
 }
 
 /** "2020", "2020a", "n.d.", or "n.d.-a". */
-export function inTextYear(reference: DisplayReference, suffix = ''): string {
+export function inTextYear(
+  reference: DisplayReference,
+  suffix = '',
+  style: CitationStyle = 'apa'
+): string {
   if (reference.year) return `${reference.year}${suffix}`;
+  // Harvard writes the missing date out: "(Smith, no date)".
+  if (style === 'harvard') return suffix ? `no date ${suffix}` : 'no date';
   return suffix ? `n.d.-${suffix}` : 'n.d.';
 }
 
@@ -322,7 +355,7 @@ interface GroupEntry {
  * by the same authors are collapsed onto one name — "(Smith, 2019, 2020)" —
  * unless a page number would then be ambiguous about which work it belongs to.
  */
-function formatParenthetical(entries: GroupEntry[]): ReferenceSegment[] {
+function formatParenthetical(entries: GroupEntry[], style: CitationStyle): ReferenceSegment[] {
   const sorted = [...entries].sort((a, b) => compareAuthorDate(a.reference, b.reference));
   const parts: ReferenceSegment[][] = [];
   let previous: GroupEntry | null = null;
@@ -338,7 +371,7 @@ function formatParenthetical(entries: GroupEntry[]): ReferenceSegment[] {
       parts.push(
         entry.italic
           ? [italic(entry.name), upright(`,${rest}`)]
-          : [upright(`${withComma(entry.name)}${rest}`)]
+          : [upright(`${style === 'apa' ? withComma(entry.name) : `${entry.name},`}${rest}`)]
       );
     }
     previous = entry;
@@ -375,11 +408,15 @@ function formatParenthetical(entries: GroupEntry[]): ReferenceSegment[] {
  */
 export function labelAuthorDateCitations(
   occurrences: readonly CitationOccurrence[],
-  references: readonly DisplayReference[]
+  references: readonly DisplayReference[],
+  style: CitationStyle = 'apa'
 ): CitationNumbering {
   const byKey = new Map(references.map((reference) => [reference.citationKey, reference]));
   const suffixes = yearSuffixes(references);
-  const forms = nameForms(references);
+  // The disambiguation rules and group-author abbreviations are APA's;
+  // Harvard tells same-name works apart by the year letter alone.
+  const apa = style === 'apa';
+  const forms = apa ? nameForms(references) : new Map<string, NameForm>();
   /** Group authors whose abbreviation the text has already defined. */
   const introduced = new Set<string>();
 
@@ -426,9 +463,9 @@ export function labelAuthorDateCitations(
       if (cited.has(identity)) continue;
       cited.add(identity);
 
-      let name = inTextName(reference, narrative, forms.get(reference.citationKey));
+      let name = inTextName(reference, narrative, forms.get(reference.citationKey), style);
       const abbreviation = reference.authorAbbreviation?.trim();
-      const groupAuthor = abbreviatedGroup(reference);
+      const groupAuthor = apa ? abbreviatedGroup(reference) : undefined;
       if (groupAuthor && abbreviation) {
         if (introduced.has(groupAuthor)) {
           name = abbreviation;
@@ -444,7 +481,7 @@ export function labelAuthorDateCitations(
         reference,
         name,
         italic: italicName(reference),
-        year: inTextYear(reference, suffixes.get(reference.citationKey)),
+        year: inTextYear(reference, suffixes.get(reference.citationKey), style),
         locator: occurrence.locator,
       });
     }
@@ -458,7 +495,7 @@ export function labelAuthorDateCitations(
     } else if (narrative) {
       const entry = entries[0] as GroupEntry;
       const locator = entry.locator ? `, ${entry.locator}` : '';
-      const groupAuthor = abbreviatedGroup(entry.reference);
+      const groupAuthor = apa ? abbreviatedGroup(entry.reference) : undefined;
       // Defined here: "National Institute of Mental Health (NIMH, 2020)".
       const defines = groupAuthor !== undefined && defining.has(groupAuthor);
       const bracket = defines
@@ -466,7 +503,7 @@ export function labelAuthorDateCitations(
         : `(${entry.year}${locator})`;
       segments = [entry.italic ? italic(entry.name) : upright(entry.name), upright(` ${bracket}`)];
     } else {
-      segments = formatParenthetical(entries);
+      segments = formatParenthetical(entries, style);
       leader.unresolved = group.some((occurrence) => !byKey.has(occurrence.citationKey));
     }
     leader.text = segments.map((segment) => segment.text).join('');

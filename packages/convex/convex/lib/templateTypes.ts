@@ -27,4 +27,6 @@ export type CitationStyle =
     | "acm"
     | "vancouver"
     | "chicago"
-    | "numeric";
+    | "numeric"
+    | "harvard"
+    | "mla";

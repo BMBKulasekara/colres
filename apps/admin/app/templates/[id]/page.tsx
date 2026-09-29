@@ -47,6 +47,7 @@ type Field = RowId & {
   placeholder: string;
   defaultValue?: string;
   help?: string;
+  dateStyle?: 'month-day-year' | 'day-month-year';
 };
 
 type ClassOption = RowId & { value: string; label: string; isDefault?: boolean; group?: string };
@@ -67,7 +68,16 @@ const CATEGORIES = [
 
 const ENGINES = ['pdflatex', 'xelatex', 'lualatex'] as const;
 const BIB_TOOLS = ['biber', 'bibtex', 'none'] as const;
-const CITATION_STYLES = ['ieee', 'apa', 'acm', 'vancouver', 'chicago', 'numeric'] as const;
+const CITATION_STYLES = [
+  'ieee',
+  'apa',
+  'harvard',
+  'mla',
+  'acm',
+  'vancouver',
+  'chicago',
+  'numeric',
+] as const;
 const FIELD_TYPES = ['text', 'textarea', 'authors', 'keywords', 'date'] as const;
 
 /** Attaches a client-side row identity for use as a React key. */

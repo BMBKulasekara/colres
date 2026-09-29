@@ -1049,6 +1049,166 @@ body {
   margin: 0;
 }
 
+/*
+ * MLA 9 typography. Applied whenever the document's template carries the
+ * `mla` class option, in both views. `printDocument.ts` carries a parallel
+ * copy for paper.
+ *
+ *  - One readable font, 12pt, double-spaced throughout, with no extra space
+ *    before or after paragraphs or headings; first lines indented 0.5 in.
+ *  - No title page. The paragraphs before the first h1 are the heading —
+ *    name, instructor, course, date — flush left. The first h1 is the title,
+ *    centred and in plain type, as is the Works Cited heading.
+ *  - Optional section headings: h2 bold and h3 italic, both flush left;
+ *    h4 bold and h5 italic, both centred.
+ *  - The author's last name and the page number, top right of every page.
+ */
+.doc-mla .tiptap {
+  font-family: "Times New Roman", Times, Georgia, serif;
+  line-height: 2;
+  text-align: left;
+  hyphens: manual;
+}
+
+.doc-mla .tiptap h1,
+.doc-mla .tiptap h2,
+.doc-mla .tiptap h3,
+.doc-mla .tiptap h4,
+.doc-mla .tiptap h5 {
+  font-size: 1em;
+  font-weight: 400;
+  line-height: 2;
+  margin: 0;
+}
+
+.doc-mla .tiptap h1 {
+  text-align: center;
+}
+
+.doc-mla .tiptap h2 {
+  font-weight: 700;
+}
+
+.doc-mla .tiptap h3 {
+  font-style: italic;
+}
+
+.doc-mla .tiptap h4 {
+  font-weight: 700;
+  text-align: center;
+}
+
+.doc-mla .tiptap h5 {
+  font-style: italic;
+  text-align: center;
+}
+
+.doc-mla .tiptap p {
+  margin: 0;
+  line-height: 2;
+  text-indent: 0.5in;
+}
+
+/* The first-page heading: every paragraph before the title, flush left. */
+.doc-mla .tiptap>p:not(h1~p) {
+  text-indent: 0;
+}
+
+/* "Works Cited" is centred like the title, and not bold. */
+.doc-mla .tiptap h1:has(+ .bib),
+.doc-mla .tiptap h2:has(+ .bib),
+.doc-mla .tiptap h3:has(+ .bib) {
+  font-weight: 400;
+  font-style: normal;
+  text-align: center;
+}
+
+/*
+ * The page header: the author's last name, stored in the running-head node.
+ * In the continuous view it is a labelled line at the top of the paper; in
+ * the paged view it sits just left of page one's number, and TipTap repeats
+ * it beside the number on every later page.
+ */
+.doc-mla .tiptap>p.running-head[data-running-head] {
+  text-align: right;
+  text-indent: 0;
+  line-height: 1.5;
+}
+
+.doc-mla .tiptap>p.running-head[data-running-head]::before {
+  content: "Page header";
+  margin-right: 0.75em;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground, #6b7280);
+}
+
+/* Right-aligned to end one space and one digit short of the page number "1". */
+.doc-mla .page-canvas .tiptap>p.running-head[data-running-head] {
+  position: absolute;
+  top: calc(var(--page-margin-top) / 2);
+  left: var(--page-margin-left);
+  right: calc(var(--page-margin-right) + 0.8em);
+  transform: translateY(-50%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-mla .page-canvas .tiptap>p.running-head[data-running-head]::before {
+  content: none;
+}
+
+/* Block quotations: indented 0.5 in. as a whole, double-spaced, no quotation
+   marks, in the body font. */
+.doc-mla .tiptap blockquote {
+  border: none;
+  padding: 0;
+  margin: 0 0 0 0.5in;
+  font-style: normal;
+  color: inherit;
+}
+
+.doc-mla .tiptap blockquote p {
+  text-indent: 0;
+}
+
+.doc-mla .tiptap blockquote p+p {
+  text-indent: 0.5in;
+}
+
+.doc-mla .tiptap ul,
+.doc-mla .tiptap ol {
+  margin: 0;
+  padding-left: 0.5in;
+}
+
+.doc-mla .tiptap li {
+  margin: 0;
+}
+
+/* Tables: "Table 1" on its own line above the title, flush left. Figures:
+   "Fig. 1." and the caption below the image, flush left. */
+.doc-mla .tiptap .float-caption {
+  text-align: left;
+  line-height: 2;
+}
+
+.doc-mla .tiptap .float-table[data-float-label]>.float-caption::before {
+  text-transform: none;
+}
+
+/* Works Cited: alphabetical, double-spaced, 0.5 in. hanging indent. */
+.doc-mla .tiptap .bib-list {
+  margin: 0;
+}
+
+.doc-mla .tiptap .bib-item--hanging {
+  line-height: 2;
+  margin: 0;
+}
+
 /* The page number in the header, top right, on every page. */
 .page-canvas__number {
   position: absolute;

@@ -10,6 +10,7 @@ import {
     requireUser,
 } from "./lib/auth.js";
 import { applyFieldValues, slugify } from "./lib/templateContent.js";
+import { citationStyleValidator } from "./schema.js";
 
 /**
  * Slugs that would shadow a real route under /docs/. `/docs/templates` is a
@@ -182,6 +183,25 @@ export const updateDocument = mutation({
         });
 
         return document;
+    },
+});
+
+/**
+ * Chooses the citation style for a document — APA, IEEE, Harvard, MLA and so
+ * on. Every collaborator sees the change at once: the in-text citations and
+ * the reference list are both drawn from it.
+ */
+export const setCitationStyle = mutation({
+    args: {
+        id: v.id("documents"),
+        citationStyle: citationStyleValidator,
+    },
+    handler: async (ctx, args) => {
+        await requireDocumentAccess(ctx, args.id);
+        await ctx.db.patch(args.id, {
+            citationStyle: args.citationStyle,
+            updatedAt: Date.now(),
+        });
     },
 });
 

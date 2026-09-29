@@ -2,12 +2,12 @@ import { Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { labelAuthorDateCitations } from '../../lib/authorDate';
 import {
   type CitationStyle,
   type DisplayReference,
   isAuthorDateStyle,
 } from '../../lib/citationFormat';
+import { labelCitations } from '../../lib/citationLabels';
 import {
   type CitationOccurrence,
   type CitationNumbering as Numbering,
@@ -127,8 +127,8 @@ function buildDecorations(doc: PMNode, options: CitationNumberingOptions) {
   const citations = findCitations(doc);
   const style = options.resolveStyle?.() ?? 'numeric';
   const numbering: Numbering = isAuthorDateStyle(style)
-    ? labelAuthorDateCitations(citations, options.resolveReferences?.() ?? [])
-    : numberCitations(citations, options.resolveKnownKeys());
+    ? labelCitations(citations, options.resolveReferences?.() ?? [], style)
+    : numberCitations(citations, options.resolveKnownKeys(), style);
 
   const decorations: Decoration[] = [];
 

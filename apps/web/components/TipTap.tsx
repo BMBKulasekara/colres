@@ -199,10 +199,11 @@ export default function TipTapEditor({
 
   const isTwoColumn = geometry.columns > 1;
   const isApa = geometry.styleId === 'apa';
+  const isMla = geometry.styleId === 'mla';
 
-  /** APA labels floats "Figure 1" / "Table 1"; everything else IEEE's way. */
+  /** APA labels floats "Figure 1" / "Table 1", MLA "Fig. 1." / "Table 1"; everything else IEEE's way. */
   const floatSchemeRef = useRef<FloatScheme>('ieee');
-  floatSchemeRef.current = isApa ? 'apa' : 'ieee';
+  floatSchemeRef.current = isApa ? 'apa' : isMla ? 'mla' : 'ieee';
 
   /** Page pitch: one page plus the gutter beneath it. */
   const pagePeriodPx = geometry.pageHeightPx + PAGE_GAP_PX;
@@ -580,7 +581,7 @@ export default function TipTapEditor({
               {isEditable ? 'Editing' : 'Read-only'}
             </span>
           </span>
-          {runningHead !== null && runningHead.length > RUNNING_HEAD_MAX && (
+          {isApa && runningHead !== null && runningHead.length > RUNNING_HEAD_MAX && (
             <span
               className="font-semibold text-amber-600"
               title="APA limits the running head to 50 characters, including spaces and punctuation."
@@ -675,7 +676,13 @@ export default function TipTapEditor({
               variant={editor.isActive('heading', { level: 1 }) ? 'secondary' : 'ghost'}
               size="icon-xs"
               onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-              title={isApa ? 'APA Level 1 — centred, bold' : 'Heading 1'}
+              title={
+                isApa
+                  ? 'APA Level 1 — centred, bold'
+                  : isMla
+                    ? 'Title or Works Cited — centred, plain'
+                    : 'Heading 1'
+              }
             >
               <Heading1 className="h-4 w-4" />
             </Button>
@@ -684,7 +691,13 @@ export default function TipTapEditor({
               variant={editor.isActive('heading', { level: 2 }) ? 'secondary' : 'ghost'}
               size="icon-xs"
               onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-              title={isApa ? 'APA Level 2 — flush left, bold' : 'Heading 2'}
+              title={
+                isApa
+                  ? 'APA Level 2 — flush left, bold'
+                  : isMla
+                    ? 'MLA section heading — flush left, bold'
+                    : 'Heading 2'
+              }
             >
               <Heading2 className="h-4 w-4" />
             </Button>
@@ -693,7 +706,13 @@ export default function TipTapEditor({
               variant={editor.isActive('heading', { level: 3 }) ? 'secondary' : 'ghost'}
               size="icon-xs"
               onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-              title={isApa ? 'APA Level 3 — flush left, bold italic' : 'Heading 3'}
+              title={
+                isApa
+                  ? 'APA Level 3 — flush left, bold italic'
+                  : isMla
+                    ? 'MLA subheading — flush left, italic'
+                    : 'Heading 3'
+              }
             >
               <Heading3 className="h-4 w-4" />
             </Button>
@@ -861,7 +880,7 @@ export default function TipTapEditor({
               title={
                 isApa
                   ? 'Insert a figure — labelled Figure N, with its title above the image'
-                  : 'Insert a figure — an image or a graph, captioned Fig. N below'
+                  : 'Insert a figure — an image or a graph, captioned Fig. N. below'
               }
             >
               {isUploading ? (
@@ -930,7 +949,9 @@ export default function TipTapEditor({
                     <p className="border-t border-border bg-muted/40 px-2.5 py-1.5 text-[10px] leading-snug text-muted-foreground">
                       {isApa
                         ? 'APA Style expects every table and figure to be called out in the text before it appears.'
-                        : 'IEEE expects every figure and table to be mentioned in the text.'}{' '}
+                        : isMla
+                          ? 'MLA expects every table and figure to be referred to in the text, as in "(see fig. 1)".'
+                          : 'IEEE expects every figure and table to be mentioned in the text.'}{' '}
                       Those marked ! are not yet.
                     </p>
                   )}
@@ -982,16 +1003,28 @@ export default function TipTapEditor({
 
             {/* The running head: required on a professional APA paper, and
                 added to a student paper only when the instructor asks. */}
-            {isApa && (
+            {/* MLA's page header is the author's last name beside the page
+                number, top right of every page. */}
+            {(isApa || isMla) && (
               <Button
                 type="button"
                 variant={runningHead !== null ? 'secondary' : 'ghost'}
                 size="icon-xs"
-                onClick={() => editor.chain().focus().insertRunningHead().run()}
+                onClick={() =>
+                  editor
+                    .chain()
+                    .focus()
+                    .insertRunningHead(isMla ? 'Last Name' : undefined)
+                    .run()
+                }
                 title={
-                  runningHead !== null
-                    ? 'Edit the running head (top left of every page, in capitals)'
-                    : 'Add a running head: a shortened title, top left of every page'
+                  isMla
+                    ? runningHead !== null
+                      ? 'Edit the page header (your last name, before the page number, top right of every page)'
+                      : 'Add the page header: your last name before the page number, top right of every page'
+                    : runningHead !== null
+                      ? 'Edit the running head (top left of every page, in capitals)'
+                      : 'Add a running head: a shortened title, top left of every page'
                 }
               >
                 <PanelTop className="h-4 w-4" />
@@ -1013,7 +1046,9 @@ export default function TipTapEditor({
                   ? 'Go to the References section'
                   : isApa
                     ? 'Add a References section on a new page, listed alphabetically by author'
-                    : 'Add a References section, numbered in the order the text cites each source'
+                    : isMla
+                      ? 'Add a Works Cited list on a new page, listed alphabetically by author'
+                      : 'Add a References section, numbered in the order the text cites each source'
               }
             >
               <BookMarked className="h-4 w-4" />
@@ -1157,8 +1192,8 @@ export default function TipTapEditor({
           DOM out of the page and drop the caret. */}
       <div
         className={`${geometry.styleId === 'ieee' ? 'doc-ieee ' : ''}${isApa ? 'doc-apa ' : ''}${
-          isPaged ? 'page-canvas-backdrop' : 'bg-background w-full rounded-b-lg'
-        }`}
+          isMla ? 'doc-mla ' : ''
+        }${isPaged ? 'page-canvas-backdrop' : 'bg-background w-full rounded-b-lg'}`}
       >
         <div
           className={
@@ -1179,10 +1214,12 @@ export default function TipTapEditor({
                 Page {index + 1} of {pageCount}
               </div>
             ))}
-          {/* The page number in the header, top right, where APA puts it on
-              every page including the title page. Drawn over the page rather
+          {/* The page number in the header, top right, where APA and MLA put
+              it on every page including the first. Drawn over the page rather
               than written into it, since which page a line lands on is a
-              measurement, not content. */}
+              measurement, not content. MLA puts the author's last name before
+              it: page one shows the editable block itself beside the number,
+              and every later page repeats the name here. */}
           {isPaged &&
             geometry.pageNumbers &&
             Array.from({ length: pageCount }, (_, index) => (
@@ -1196,13 +1233,13 @@ export default function TipTapEditor({
                 }}
                 aria-hidden="true"
               >
-                {index + 1}
+                {isMla && index > 0 && runningHead ? `${runningHead} ${index + 1}` : index + 1}
               </div>
             ))}
           {/* The running head repeated in the header of every page after the
               first; page one shows the editable block itself. */}
           {isPaged &&
-            geometry.pageNumbers &&
+            isApa &&
             runningHead &&
             Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => (
               <div

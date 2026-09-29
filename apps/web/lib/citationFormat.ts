@@ -55,7 +55,27 @@ export interface DisplayReference {
   authorAbbreviation?: string;
 }
 
-export type CitationStyle = 'ieee' | 'apa' | 'acm' | 'vancouver' | 'chicago' | 'numeric';
+export type CitationStyle =
+  | 'ieee'
+  | 'apa'
+  | 'harvard'
+  | 'mla'
+  | 'acm'
+  | 'vancouver'
+  | 'chicago'
+  | 'numeric';
+
+/** What each style is called in the style picker. */
+export const CITATION_STYLE_LABELS: Record<CitationStyle, string> = {
+  apa: 'APA 7th edition',
+  ieee: 'IEEE',
+  harvard: 'Harvard (Cite Them Right)',
+  mla: 'MLA 9th edition',
+  vancouver: 'Vancouver (NLM)',
+  acm: 'ACM',
+  chicago: 'Chicago',
+  numeric: 'Numeric',
+};
 
 /** One run of an entry. `italic` marks the container title. */
 export interface ReferenceSegment {
@@ -129,6 +149,11 @@ function nameParts(author: string): NameParts {
 
 export function surname(author: string): string {
   return nameParts(author).family;
+}
+
+/** The given names as typed — "John Kenneth" — or "" for a group author. */
+export function givenNames(author: string): string {
+  return nameParts(author).given;
 }
 
 /** "Jr.", "III", or "" — omitted in text citations, kept in the reference. */
@@ -282,7 +307,10 @@ function capitalise(part: string): string {
  * Braced words, and words that already carry an inner capital, are kept as
  * typed.
  */
-export function toTitleCase(title: string): string {
+export function toTitleCase(
+  title: string,
+  minorWords: ReadonlySet<string> = APA_MINOR_WORDS
+): string {
   const tokens = title.split(/(\{[^}]*\}|\s+)/).filter((token) => token !== '');
   let atBreak = true;
 
@@ -298,7 +326,7 @@ export function toTitleCase(title: string): string {
       atBreak = SENTENCE_BREAK.test(token);
       const bare = token.replace(/[^A-Za-z]/g, '').toLowerCase();
 
-      if (!opensSentence && APA_MINOR_WORDS.has(bare)) return token.toLowerCase();
+      if (!opensSentence && minorWords.has(bare)) return token.toLowerCase();
       // Split on hyphens and en dashes, keeping them, so "tibia–basitarsis"
       // becomes "Tibia–Basitarsis".
       return token
@@ -505,6 +533,13 @@ function enDashPages(pages: string): string {
   return pages.replace(/(\d)\s*-{1,2}\s*(\d)/g, '$1–$2');
 }
 
+/** "pp. 207–217", "p. 12", or "Art. no. e0193972" for an article-numbered journal. */
+function ieeePages(pages: string): string {
+  const { range, article } = pageField(pages);
+  if (article) return `Art. no. ${article}`;
+  return `${range && isRange(range) ? 'pp.' : 'p.'} ${range ?? pages}`;
+}
+
 /** "A. Vaswani, N. Shazeer, et al." — the shape the other numbered styles use. */
 function initialsFirst(authors: string[], max = 6): string {
   if (authors.length === 0) return 'Unknown author';
@@ -656,7 +691,7 @@ function formatIeee(reference: DisplayReference): ReferenceSegment[] {
           : null,
         address ? upright(`, ${address}`) : null,
         publisher ? upright(`, ${abbreviateContainer(publisher)}`) : null,
-        pages ? upright(`, pp. ${enDashPages(pages)}`) : null,
+        pages ? upright(`, ${ieeePages(pages)}`) : null,
         closing(Boolean(container || address || publisher || pages)),
       ]);
 
@@ -689,7 +724,7 @@ function formatIeee(reference: DisplayReference): ReferenceSegment[] {
         container ? italic(container) : null,
         volume ? upright(`, vol. ${volume}`) : null,
         number ? upright(`, no. ${number}`) : null,
-        pages ? upright(`, pp. ${enDashPages(pages)}`) : null,
+        pages ? upright(`, ${ieeePages(pages)}`) : null,
         closing(Boolean(container || volume || number || pages)),
       ]);
   }
@@ -938,6 +973,588 @@ function formatApa(reference: DisplayReference, yearSuffix = ''): ReferenceSegme
   return joinSegments([...lead, ...source, apaLink(reference)]);
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Shared helpers for the styles below                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The page field splits two ways: a page range, or — for journals that number
+ * articles instead of paginating them — "Article e0193972". Each style prints
+ * the two differently, so they are told apart once, here.
+ */
+function pageField(pages: string | undefined): { range?: string; article?: string } {
+  const value = pages?.trim();
+  if (!value) return {};
+  const article = /^(?:article|art\.?\s*no\.?)\s*(.+)$/i.exec(value);
+  return article ? { article: article[1] } : { range: enDashPages(value) };
+}
+
+/** True when a page field names more than one page. */
+function isRange(pages: string): boolean {
+  return /[–,-]/.test(pages);
+}
+
+/** "18 July 2022", read in UTC for the reason given at `ieeeAccessDate`. */
+function dayMonthYear(
+  timestamp: number,
+  months: readonly string[] = APA_MONTHS
+): string | undefined {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+/** "A, B and C" — no comma before the last name. */
+function listWithAnd(names: string[], joiner = 'and'): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} ${joiner} ${names[names.length - 1]}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Harvard (Cite Them Right, 12th edition)                                    */
+/* -------------------------------------------------------------------------- */
+
+/** "Smith, J.K." — Harvard closes up the initials. */
+function harvardName(author: string): string {
+  const i = initials(author).replace(/\. /g, '.');
+  const suffix = nameSuffix(author);
+  const name = i ? `${surname(author)}, ${i}` : surname(author);
+  return suffix ? `${name}, ${suffix}` : name;
+}
+
+/** "Smith, J., Jones, K. and Brown, L." — every author, "and" before the last. */
+function harvardAuthors(authors: string[]): string {
+  return listWithAnd(authors.map(harvardName));
+}
+
+/** Editors in the "in …" of a chapter: "Oliver, M.B. and Raney, A.A. (eds)". */
+function harvardEditors(editors: string[]): string {
+  return `${listWithAnd(editors.map(harvardName))} (${editors.length > 1 ? 'eds' : 'ed.'})`;
+}
+
+/** "2nd edn." */
+function harvardEdition(edition: string | undefined): string {
+  return edition ? `${editionLabel(edition)} edn.` : '';
+}
+
+/**
+ * "Available at: https://doi.org/… " for a DOI, or "Available at: URL
+ * (Accessed: 18 July 2022)" for a web address, which may change.
+ */
+function harvardAvailability(reference: DisplayReference): ReferenceSegment | null {
+  if (reference.doi) return upright(` Available at: ${doiUrl(reference.doi)}`);
+  if (!reference.url) return null;
+  const accessed = reference.accessed ? dayMonthYear(reference.accessed) : undefined;
+  return upright(` Available at: ${reference.url}${accessed ? ` (Accessed: ${accessed})` : ''}.`);
+}
+
+/**
+ * Harvard reference entries, following Cite Them Right:
+ *
+ *   Grady, J.S., Her, M., Moreno, G., Perez, C. and Yelinek, J. (2019)
+ *   'Emotions in storybooks', Psychology of Popular Media Culture, 8(3),
+ *   pp. 207–217. Available at: https://doi.org/10.1037/ppm0000185
+ *
+ * The year follows the authors without a full stop, the title of a part of a
+ * larger work sits in single quotation marks, and the larger work — journal,
+ * book, proceedings — is italic. A work that stands alone has its own title
+ * in italics. Titles keep the capitals they were entered with.
+ */
+function formatHarvard(reference: DisplayReference, yearSuffix = ''): ReferenceSegment[] {
+  const { authors, venue, volume, number, publisher, address } = reference;
+  const title = stripBraces(reference.title).trim();
+  const type = reference.type ?? 'misc';
+  const year = reference.year
+    ? `${reference.year}${yearSuffix}`
+    : `no date${yearSuffix ? ` ${yearSuffix}` : ''}`;
+  const { range, article } = pageField(reference.pages);
+  const pages = range
+    ? `${isRange(range) ? 'pp.' : 'p.'} ${range}`
+    : article
+      ? `article ${article}`
+      : '';
+  const imprint = [address, publisher].filter(Boolean).join(': ');
+  const edition = harvardEdition(reference.edition);
+
+  const lead: ReferenceSegment[] =
+    authors.length > 0 ? [upright(`${harvardAuthors(authors)} (${year}) `)] : [];
+  // With no author, the title moves to the front and the year follows it.
+  const titleThenYear = (segment: ReferenceSegment) =>
+    authors.length > 0 ? [segment] : [segment, upright(` (${year})`)];
+
+  let body: (ReferenceSegment | null)[];
+  switch (type) {
+    case 'article':
+      body = [
+        ...titleThenYear(upright(`'${title}'`)),
+        venue ? upright(', ') : null,
+        venue ? italic(venue) : null,
+        volume ? upright(`, ${volume}${number ? `(${number})` : ''}`) : null,
+        pages ? upright(`, ${pages}`) : null,
+        upright('.'),
+      ];
+      break;
+
+    case 'inproceedings':
+    case 'incollection':
+      body = [
+        ...titleThenYear(upright(`'${title}'`)),
+        upright(', in '),
+        reference.editors?.length ? upright(`${harvardEditors(reference.editors)} `) : null,
+        venue ? italic(venue) : null,
+        upright('.'),
+        edition ? upright(` ${edition}`) : null,
+        imprint ? upright(` ${imprint}`) : null,
+        pages ? upright(`${imprint ? ',' : ''} ${pages}`) : null,
+        imprint || pages ? upright('.') : null,
+      ];
+      break;
+
+    case 'phdthesis':
+      body = [
+        ...titleThenYear(italic(title)),
+        upright('. PhD thesis.'),
+        venue || publisher ? upright(` ${endSentence((venue || publisher) as string)}`) : null,
+      ];
+      break;
+
+    case 'techreport': {
+      const issuer = venue || publisher;
+      body = [
+        ...titleThenYear(italic(title)),
+        upright('.'),
+        number ? upright(` Report ${number}.`) : null,
+        issuer && !sameAsAuthor(authors, issuer)
+          ? upright(` ${endSentence([address, issuer].filter(Boolean).join(': '))}`)
+          : null,
+      ];
+      break;
+    }
+
+    case 'book':
+      body = [
+        ...titleThenYear(italic(title)),
+        upright('.'),
+        edition ? upright(` ${edition}`) : null,
+        imprint && !sameAsAuthor(authors, publisher ?? '')
+          ? upright(` ${endSentence(imprint)}`)
+          : null,
+      ];
+      break;
+
+    default:
+      body = [
+        ...titleThenYear(italic(title)),
+        upright('.'),
+        !reference.url && (publisher || venue)
+          ? upright(` ${endSentence((publisher || venue) as string)}`)
+          : null,
+      ];
+  }
+
+  return joinSegments([...lead, ...body, harvardAvailability(reference)]);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  MLA (9th edition)                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * MLA leaves every preposition lowercase in a title, however long, along with
+ * articles, coordinating conjunctions, and the "to" of an infinitive.
+ */
+const MLA_MINOR_WORDS = new Set([
+  'a',
+  'an',
+  'the',
+  'and',
+  'but',
+  'for',
+  'nor',
+  'or',
+  'so',
+  'yet',
+  'about',
+  'above',
+  'across',
+  'after',
+  'against',
+  'along',
+  'among',
+  'around',
+  'as',
+  'at',
+  'before',
+  'behind',
+  'below',
+  'beneath',
+  'beside',
+  'between',
+  'beyond',
+  'by',
+  'despite',
+  'down',
+  'during',
+  'except',
+  'for',
+  'from',
+  'in',
+  'inside',
+  'into',
+  'like',
+  'near',
+  'of',
+  'off',
+  'on',
+  'onto',
+  'out',
+  'outside',
+  'over',
+  'past',
+  'per',
+  'since',
+  'through',
+  'throughout',
+  'to',
+  'toward',
+  'towards',
+  'under',
+  'underneath',
+  'until',
+  'up',
+  'upon',
+  'via',
+  'with',
+  'within',
+  'without',
+]);
+
+/** MLA's short month names: "Sept." and the unabbreviated May, June and July. */
+const MLA_MONTHS = [
+  'Jan.',
+  'Feb.',
+  'Mar.',
+  'Apr.',
+  'May',
+  'June',
+  'July',
+  'Aug.',
+  'Sept.',
+  'Oct.',
+  'Nov.',
+  'Dec.',
+] as const;
+
+export function mlaTitleCase(title: string): string {
+  return toTitleCase(title, MLA_MINOR_WORDS);
+}
+
+/**
+ * MLA shortens the second number of a page range to its last two digits when
+ * nothing more is needed: 207–17, 1879–98, but 98–110 and 1296–1301.
+ */
+export function mlaPageRange(pages: string): string {
+  return enDashPages(pages).replace(/(\d+)–(\d+)/g, (whole, start: string, end: string) => {
+    if (Number(start) < 100 || start.length !== end.length) return whole;
+    let keep = 2;
+    while (
+      keep < end.length &&
+      start.slice(0, end.length - keep) !== end.slice(0, end.length - keep)
+    ) {
+      keep += 1;
+    }
+    return `${start}–${end.slice(end.length - keep)}`;
+  });
+}
+
+/** "Smith, John" for the first author; "John Smith" for any other. */
+function mlaName(author: string, inverted: boolean): string {
+  if (isGroupAuthor(author)) return surname(author);
+  const given = givenNames(author);
+  const suffix = nameSuffix(author);
+  if (!given) return suffix ? `${surname(author)}, ${suffix}` : surname(author);
+  return inverted
+    ? `${surname(author)}, ${given}${suffix ? `, ${suffix}` : ''}`
+    : `${given} ${surname(author)}${suffix ? ` ${suffix}` : ''}`;
+}
+
+/**
+ * One author: "Smith, John." Two: "Smith, John, and Kate Jones." Three or
+ * more: "Smith, John, et al." — MLA never lists a third name.
+ */
+function mlaAuthors(authors: string[]): string {
+  const first = mlaName(authors[0] as string, true);
+  if (authors.length === 1) return first;
+  if (authors.length === 2) return `${first}, and ${mlaName(authors[1] as string, false)}`;
+  return `${first}, et al.`;
+}
+
+/** "edited by John Smith and Kate Jones" — names in normal order. */
+function mlaEditors(editors: string[]): string {
+  const names = editors.map((editor) => mlaName(editor, false));
+  const list =
+    names.length <= 2
+      ? names.join(' and ')
+      : `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`;
+  return `edited by ${list}`;
+}
+
+/** MLA prints a URL without its "https://"; a DOI keeps its doi.org form. */
+function mlaLocation(reference: DisplayReference): string | undefined {
+  if (reference.doi) return doiUrl(reference.doi);
+  return reference.url?.replace(/^https?:\/\//i, '');
+}
+
+/**
+ * MLA 9 entries, built from the core elements in their fixed order — author,
+ * title of source, title of container, other contributors, version, number,
+ * publisher, publication date, location — each followed by the punctuation
+ * the handbook assigns it:
+ *
+ *   Grady, Jessica S., et al. "Emotions in Storybooks: A Comparison of
+ *   Storybooks That Represent Ethnic and Racial Groups in the United States."
+ *   Psychology of Popular Media Culture, vol. 8, no. 3, 2019, pp. 207–17,
+ *   https://doi.org/10.1037/ppm0000185.
+ *
+ * Titles are in title case; a part of a larger work is quoted and the larger
+ * work is italic. A group author who is also the publisher is not repeated as
+ * author: the entry starts with the title.
+ */
+function formatMla(reference: DisplayReference, repeatedAuthor = false): ReferenceSegment[] {
+  const { venue, volume, number, publisher } = reference;
+  const type = reference.type ?? 'misc';
+  const title = mlaTitleCase(reference.title.trim());
+  const authors = sameAsAuthor(reference.authors, publisher || venue || '')
+    ? []
+    : reference.authors;
+  const month =
+    reference.month && reference.month >= 1 && reference.month <= 12
+      ? MLA_MONTHS[reference.month - 1]
+      : undefined;
+  const date = reference.year
+    ? month
+      ? `${month} ${reference.year}`
+      : String(reference.year)
+    : undefined;
+  const { range, article } = pageField(reference.pages);
+  const pages = range ? `${isRange(range) ? 'pp.' : 'p.'} ${mlaPageRange(range)}` : article;
+  const edition = reference.edition ? `${editionLabel(reference.edition)} ed.` : undefined;
+  const location = mlaLocation(reference);
+  const accessed =
+    !reference.doi && reference.url && !reference.year && reference.accessed
+      ? dayMonthYear(reference.accessed, MLA_MONTHS)
+      : undefined;
+
+  const author =
+    authors.length === 0
+      ? []
+      : [upright(repeatedAuthor ? '---. ' : `${endSentence(mlaAuthors(authors))} `)];
+  const quoted = upright(`"${endSentence(title)}"`);
+  const standalone = [italic(title), upright(/[.?!]$/.test(title) ? '' : '.')];
+
+  /** Container elements, separated by commas and closed with a period. */
+  const container = (name: string | undefined, elements: (string | undefined)[]) => {
+    const rest = elements.filter(Boolean) as string[];
+    const out: ReferenceSegment[] = [];
+    if (name) out.push(upright(' '), italic(name));
+    if (rest.length) out.push(upright(`${name ? ', ' : ' '}${rest.join(', ')}`));
+    if (name || rest.length) out.push(upright('.'));
+    return out;
+  };
+
+  let body: ReferenceSegment[];
+  switch (type) {
+    case 'article':
+      body = [
+        quoted,
+        ...container(venue, [
+          volume ? `vol. ${volume}` : undefined,
+          number ? `no. ${number}` : undefined,
+          date,
+          pages,
+          location,
+        ]),
+      ];
+      break;
+
+    case 'inproceedings':
+    case 'incollection':
+      body = [
+        quoted,
+        ...container(venue, [
+          reference.editors?.length ? mlaEditors(reference.editors) : undefined,
+          edition,
+          publisher,
+          date,
+          pages,
+          location,
+        ]),
+      ];
+      break;
+
+    case 'book':
+      body = [...standalone, ...container(undefined, [edition, publisher, date, location])];
+      break;
+
+    case 'techreport':
+      body = [
+        ...standalone,
+        ...container(undefined, [
+          number ? `Report no. ${number}` : undefined,
+          venue || publisher,
+          date,
+          location,
+        ]),
+      ];
+      break;
+
+    // MLA puts the date before the institution and the kind of thesis last.
+    case 'phdthesis':
+      body = [
+        ...standalone,
+        ...container(undefined, [date]),
+        ...container(undefined, [venue || publisher, 'PhD dissertation']),
+        ...(location ? container(undefined, [location]) : []),
+      ];
+      break;
+
+    default:
+      body = isWebPage(reference)
+        ? [quoted, ...container(venue || publisher, [date, location])]
+        : [...standalone, ...container(undefined, [publisher || venue, date, location])];
+  }
+
+  return joinSegments([...author, ...body, accessed ? upright(` Accessed ${accessed}.`) : null]);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Vancouver (ICMJE / NLM Citing Medicine)                                    */
+/* -------------------------------------------------------------------------- */
+
+const VANCOUVER_MAX_AUTHORS = 6;
+const VANCOUVER_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+/** "Grady JS" — surname, then initials with no periods or spaces. */
+function vancouverName(author: string): string {
+  if (isGroupAuthor(author)) return surname(author);
+  const i = initials(author).replace(/[.\s-]/g, '');
+  const suffix = nameSuffix(author).replace(/\./g, '');
+  return [surname(author), i, suffix].filter(Boolean).join(' ');
+}
+
+/** Up to six names, then "et al."; the list closes with a period. */
+function vancouverAuthors(names: string[]): string {
+  const shown = names.slice(0, VANCOUVER_MAX_AUTHORS).map(vancouverName);
+  return `${shown.join(', ')}${names.length > VANCOUVER_MAX_AUTHORS ? ', et al' : ''}.`;
+}
+
+/** NLM drops the repeated leading digits of a page range: 207-17. */
+function vancouverPages(pages: string): string {
+  return mlaPageRange(pages).replace(/–/g, '-');
+}
+
+/**
+ * Vancouver entries, as the NLM's Citing Medicine sets them — the format
+ * medical journals use:
+ *
+ *   Grady JS, Her M, Moreno G, Perez C, Yelinek J. Emotions in storybooks: a
+ *   comparison of storybooks that represent ethnic and racial groups in the
+ *   United States. Psychol Pop Media Cult. 2019;8(3):207-17. doi:
+ *   10.1037/ppm0000185
+ *
+ * Nothing is italic. Titles are in sentence case. The journal is printed as
+ * it was entered — NLM expects its own abbreviation, which only the author
+ * can supply.
+ */
+function formatVancouver(reference: DisplayReference): ReferenceSegment[] {
+  const { authors, venue, volume, number, publisher, address } = reference;
+  const type = reference.type ?? 'misc';
+  const title = endSentence(toSentenceCase(reference.title.trim()));
+  const month =
+    reference.month && reference.month >= 1 && reference.month <= 12
+      ? VANCOUVER_MONTHS[reference.month - 1]
+      : undefined;
+  const year = reference.year ? String(reference.year) : '[date unknown]';
+  const { range, article } = pageField(reference.pages);
+  const pages = range ? vancouverPages(range) : article;
+  const imprint = [address, publisher].filter(Boolean).join(': ');
+  const edition = reference.edition ? ` ${editionLabel(reference.edition)} ed.` : '';
+  const doi = reference.doi
+    ? ` doi: ${reference.doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '')}`
+    : '';
+  const lead = authors.length > 0 ? `${vancouverAuthors(authors)} ` : '';
+
+  let text: string;
+  switch (type) {
+    case 'article':
+      text =
+        `${lead}${title} ${venue ? `${endSentence(venue)} ` : ''}${year}${month ? ` ${month}` : ''}` +
+        `${volume ? `;${volume}` : ''}${number ? `(${number})` : ''}${pages ? `:${pages}` : ''}.${doi}`;
+      break;
+
+    case 'inproceedings':
+    case 'incollection': {
+      const editors = reference.editors?.length
+        ? ` ${reference.editors.map(vancouverName).join(', ')}, ${reference.editors.length > 1 ? 'editors' : 'editor'}.`
+        : '';
+      text =
+        `${lead}${title} In:${editors} ${venue ? endSentence(venue) : ''}${edition}` +
+        `${imprint ? ` ${imprint};` : ''} ${year}.${pages ? ` p. ${pages}.` : ''}${doi}`;
+      break;
+    }
+
+    case 'book':
+      text = `${lead}${title}${edition}${imprint ? ` ${imprint};` : ''} ${year}.${doi}`;
+      break;
+
+    case 'phdthesis':
+      text = `${lead}${title.replace(/\.$/, '')} [dissertation]. ${[address, venue || publisher].filter(Boolean).join(': ')}${venue || publisher ? ';' : ''} ${year}.`;
+      break;
+
+    case 'techreport':
+      text = `${lead}${title}${imprint || venue ? ` ${[address, venue || publisher].filter(Boolean).join(': ')};` : ''} ${year}.${number ? ` Report No.: ${number}.` : ''}${doi}`;
+      break;
+
+    default: {
+      if (isWebPage(reference)) {
+        const cited = reference.accessed ? new Date(reference.accessed) : undefined;
+        const citedText =
+          cited && !Number.isNaN(cited.getTime())
+            ? ` [cited ${cited.getUTCFullYear()} ${VANCOUVER_MONTHS[cited.getUTCMonth()]} ${cited.getUTCDate()}]`
+            : '';
+        text = `${lead}${title.replace(/\.$/, '')} [Internet]. ${venue || publisher ? `${venue || publisher}; ` : ''}${year}${citedText}. Available from: ${reference.url}`;
+      } else {
+        text = `${lead}${title}${imprint ? ` ${imprint};` : ''} ${year}.${doi}`;
+      }
+    }
+  }
+
+  return [upright(text.replace(/\s{2,}/g, ' ').trim())];
+}
+
+/**
+ * The heading the reference list goes under: MLA calls it "Works Cited" and
+ * Cite Them Right Harvard "Reference list"; the rest say "References".
+ */
+export function bibliographyHeading(style: CitationStyle): string {
+  if (style === 'mla') return 'Works Cited';
+  if (style === 'harvard') return 'Reference list';
+  return 'References';
+}
+
 /** Per-entry context a style may need from the rest of the list. */
 export interface FormatContext {
   /**
@@ -946,6 +1563,12 @@ export interface FormatContext {
    * it is worked out by the caller (`authorDate.yearSuffixes`).
    */
   yearSuffix?: string;
+  /**
+   * MLA: this entry's authors are exactly those of the entry above it, so
+   * their names are replaced by three hyphens, "---." See
+   * `authorPage.repeatedAuthors`.
+   */
+  repeatedAuthor?: boolean;
 }
 
 /**
@@ -960,6 +1583,9 @@ export function formatReference(
   // APA does its own casing, which needs to see the braces; everything else
   // shows the title as typed, less the braces.
   if (style === 'apa') return formatApa(reference, context.yearSuffix);
+  if (style === 'harvard') return formatHarvard(reference, context.yearSuffix);
+  if (style === 'mla') return formatMla(reference, context.repeatedAuthor);
+  if (style === 'vancouver') return formatVancouver(reference);
 
   const title = stripBraces(reference.title);
   const { authors, year, venue, volume, number, pages } = reference;
@@ -989,19 +1615,6 @@ export function formatReference(
         pages ? `, ${pages}.` : '',
       ];
       return [upright(parts.filter(Boolean).join(' '))];
-    }
-
-    case 'vancouver': {
-      const parts = [
-        withPeriod(initialsFirst(authors, 6)),
-        withPeriod(title),
-        venue ? `${venue}.` : '',
-        `${y}`,
-        volume ? `;${volume}` : '',
-        number ? `(${number})` : '',
-        pages ? `:${pages}` : '',
-      ];
-      return [upright(`${parts.filter(Boolean).join(' ')}.`)];
     }
 
     default: {
@@ -1036,9 +1649,20 @@ export function isNumberedStyle(style: CitationStyle): boolean {
 }
 
 /**
- * Styles whose in-text citations name the author and year — "(Smith, 2020)" —
- * and whose reference list is alphabetical. See `authorDate.ts`.
+ * Styles whose in-text citations name the author — APA and Harvard with the
+ * year, "(Smith, 2020)", MLA with the page, "(Smith 45)" — and whose reference
+ * list is alphabetical with a hanging indent. See `authorDate.ts`.
  */
 export function isAuthorDateStyle(style: CitationStyle): boolean {
-  return style === 'apa';
+  return style === 'apa' || style === 'harvard' || style === 'mla';
+}
+
+/**
+ * How a style points from the text to the list: by number ("[1]", "(1)"), by
+ * author and year ("(Smith, 2020)"), or — MLA — by author and page
+ * ("(Smith 45)"). The last two share an alphabetical, hanging-indent list.
+ */
+export function citationSystem(style: CitationStyle): 'numbered' | 'author-date' | 'author-page' {
+  if (style === 'mla') return 'author-page';
+  return isAuthorDateStyle(style) ? 'author-date' : 'numbered';
 }
