@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server.js';
 import { requireDocumentAccessByRef } from './lib/auth.js';
+import { bumpContribution } from './lib/contributions.js';
 
 export const saveComment = mutation({
   args: {
@@ -12,6 +13,7 @@ export const saveComment = mutation({
   handler: async (ctx, args) => {
     const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId);
 
+    await bumpContribution(ctx, document._id, user._id, { comments: 1 });
     return await ctx.db.insert('comments', {
       documentId: document._id,
       threadId: args.threadId,

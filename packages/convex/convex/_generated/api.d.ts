@@ -9,6 +9,7 @@
  */
 
 import type * as admin_activity from "../admin/activity.js";
+import type * as admin_contributions from "../admin/contributions.js";
 import type * as admin_documents from "../admin/documents.js";
 import type * as admin_organizations from "../admin/organizations.js";
 import type * as admin_search from "../admin/search.js";
@@ -16,6 +17,7 @@ import type * as admin_stats from "../admin/stats.js";
 import type * as admin_users from "../admin/users.js";
 import type * as chats from "../chats.js";
 import type * as comments from "../comments.js";
+import type * as contributions from "../contributions.js";
 import type * as documents from "../documents.js";
 import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -23,6 +25,7 @@ import type * as lib_cascade from "../lib/cascade.js";
 import type * as lib_chatAttachments from "../lib/chatAttachments.js";
 import type * as lib_chatMentions from "../lib/chatMentions.js";
 import type * as lib_citations from "../lib/citations.js";
+import type * as lib_contributions from "../lib/contributions.js";
 import type * as lib_externalData from "../lib/externalData.js";
 import type * as lib_templateCatalog from "../lib/templateCatalog.js";
 import type * as lib_templateContent from "../lib/templateContent.js";
@@ -42,6 +45,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "admin/activity": typeof admin_activity;
+  "admin/contributions": typeof admin_contributions;
   "admin/documents": typeof admin_documents;
   "admin/organizations": typeof admin_organizations;
   "admin/search": typeof admin_search;
@@ -49,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   "admin/users": typeof admin_users;
   chats: typeof chats;
   comments: typeof comments;
+  contributions: typeof contributions;
   documents: typeof documents;
   "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
@@ -56,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   "lib/chatAttachments": typeof lib_chatAttachments;
   "lib/chatMentions": typeof lib_chatMentions;
   "lib/citations": typeof lib_citations;
+  "lib/contributions": typeof lib_contributions;
   "lib/externalData": typeof lib_externalData;
   "lib/templateCatalog": typeof lib_templateCatalog;
   "lib/templateContent": typeof lib_templateContent;

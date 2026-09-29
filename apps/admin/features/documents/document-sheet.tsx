@@ -24,6 +24,7 @@ import { WEB_APP_URL } from '../../lib/constants';
 import { formatDateTime, pluralize } from '../../lib/format';
 import { ActivityFeed } from '../activity/activity-feed';
 import { ContentPreview } from './content-preview';
+import { DocumentContributions } from './document-contributions';
 import { DocumentMetaForm } from './document-meta-form';
 import { useDocumentActions } from './use-document-actions';
 
@@ -95,6 +96,7 @@ function DocumentSheetBody({ id, onClose }: { id: Id<'documents'>; onClose: () =
         <TabsList variant="line" className="w-full justify-start border-b px-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
+          <TabsTrigger value="contributions">Contributions</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
@@ -195,6 +197,10 @@ function DocumentSheetBody({ id, onClose }: { id: Id<'documents'>; onClose: () =
             </Button>
           </div>
           <ContentPreview html={doc.content} title={doc.title} />
+        </TabsContent>
+
+        <TabsContent value="contributions" className="p-6">
+          <DocumentContributions documentId={doc._id} />
         </TabsContent>
 
         <TabsContent value="activity" className="p-6">

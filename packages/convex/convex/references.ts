@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server.js";
 import { requireDocumentAccess } from "./lib/auth.js";
+import { bumpContribution } from "./lib/contributions.js";
 import { buildCitationKey, toBibtexFile, unprotectedCapitals } from "./lib/citations.js";
 import { optionalText } from "./lib/externalData.js";
 
@@ -123,6 +124,7 @@ export const addReference = mutation({
             createdAt: now,
             updatedAt: now,
         });
+        await bumpContribution(ctx, args.documentId, user._id, { references: 1 });
         return { id, citationKey };
     },
 });

@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel.js';
 import { type QueryCtx, mutation, query } from './_generated/server.js';
 import { requireDocumentAccessByRef } from './lib/auth.js';
+import { bumpContribution } from './lib/contributions.js';
 import {
   MAX_ATTACHMENTS_PER_MESSAGE,
   MAX_ATTACHMENT_BYTES,
@@ -139,6 +140,7 @@ export const sendMessage = mutation({
       ? (await collaboratorIds(ctx, document)).filter((id) => args.mentions?.includes(id))
       : undefined;
 
+    await bumpContribution(ctx, document._id, user._id, { messages: 1 });
     return await ctx.db.insert('chats', {
       documentId: document._id,
       text,

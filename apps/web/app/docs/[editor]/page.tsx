@@ -19,6 +19,7 @@ import { BookOpen, Check, Loader, MessageSquare } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Chat } from '../../../components/Chat';
+import { ContributionsPanel } from '../../../components/ContributionsPanel';
 import { ChatToasts } from '../../../components/chat/ChatToast';
 import { UnreadBadge, unreadLabel } from '../../../components/chat/UnreadBadge';
 import { useChatNotifications } from '../../../components/chat/useChatNotifications';
@@ -98,7 +99,9 @@ function EditorContent({ docs }: EditorContentProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
   const [activeTab, setActiveTab] = useState<'comments' | 'chat'>('comments');
-  const [researchTab, setResearchTab] = useState<'research' | 'references'>('research');
+  const [researchTab, setResearchTab] = useState<'research' | 'references' | 'contributions'>(
+    'research'
+  );
 
   // Both drawers are controlled, so that a chat notification can open the
   // collaboration panel on the right tab rather than only pointing at it.
@@ -373,10 +376,23 @@ function EditorContent({ docs }: EditorContentProps) {
                       >
                         References
                       </Button>
+                      <Button
+                        onClick={() => setResearchTab('contributions')}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                          researchTab === 'contributions'
+                            ? 'bg-background text-foreground shadow-xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Contributors
+                      </Button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto px-4 pb-4">
                       {researchTab === 'research' && <ResearchPanel documentId={docs._id} />}
+                      {researchTab === 'contributions' && (
+                        <ContributionsPanel documentId={docs._id} />
+                      )}
                       {researchTab === 'references' && (
                         <ReferencesPanel
                           documentId={docs._id}
