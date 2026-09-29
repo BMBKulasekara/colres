@@ -8,10 +8,18 @@
  * @module
  */
 
+import type * as admin_activity from "../admin/activity.js";
+import type * as admin_documents from "../admin/documents.js";
+import type * as admin_organizations from "../admin/organizations.js";
+import type * as admin_search from "../admin/search.js";
+import type * as admin_stats from "../admin/stats.js";
+import type * as admin_users from "../admin/users.js";
 import type * as chats from "../chats.js";
 import type * as comments from "../comments.js";
 import type * as documents from "../documents.js";
+import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as lib_cascade from "../lib/cascade.js";
 import type * as lib_chatAttachments from "../lib/chatAttachments.js";
 import type * as lib_chatMentions from "../lib/chatMentions.js";
 import type * as lib_citations from "../lib/citations.js";
@@ -33,10 +41,18 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "admin/activity": typeof admin_activity;
+  "admin/documents": typeof admin_documents;
+  "admin/organizations": typeof admin_organizations;
+  "admin/search": typeof admin_search;
+  "admin/stats": typeof admin_stats;
+  "admin/users": typeof admin_users;
   chats: typeof chats;
   comments: typeof comments;
   documents: typeof documents;
+  "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
+  "lib/cascade": typeof lib_cascade;
   "lib/chatAttachments": typeof lib_chatAttachments;
   "lib/chatMentions": typeof lib_chatMentions;
   "lib/citations": typeof lib_citations;

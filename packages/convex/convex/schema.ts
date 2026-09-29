@@ -47,6 +47,21 @@ export const templateCategoryValidator = v.union(
   v.literal("calendars")
 );
 
+/**
+ * Roles an admin can assign. `users.role` itself stays a plain string in the
+ * table so existing rows never fail validation, but every write path that
+ * changes a role goes through this union.
+ */
+export const roleValidator = v.union(v.literal("admin"), v.literal("user"));
+
+export const auditEntityTypeValidator = v.union(
+  v.literal("document"),
+  v.literal("template"),
+  v.literal("user"),
+  v.literal("organization"),
+  v.literal("catalog")
+);
+
 export default defineSchema({
   users: defineTable({
     clerkId: v.string(),
@@ -56,7 +71,11 @@ export default defineSchema({
     role: v.string(),
     createdAt: v.number(),
     orgIds: v.optional(v.array(v.string())),
-  }).index("by_clerk_id", ["clerkId"]),
+  })
+    .index("by_clerk_id", ["clerkId"])
+    .index("by_role", ["role"])
+    .index("by_created", ["createdAt"])
+    .searchIndex("search_name", { searchField: "name", filterFields: ["role"] }),
 
 
   documents: defineTable({
@@ -96,7 +115,14 @@ export default defineSchema({
   })
     .index("by_author", ["author"])
     .index("by_org_id", ["orgId"])
-    .index("by_slug", ["slug"]),
+    .index("by_slug", ["slug"])
+    .index("by_created", ["createdAt"])
+    .index("by_updated", ["updatedAt"])
+    .index("by_status_updated", ["status", "updatedAt"])
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["status", "orgId", "author", "templateId"],
+    }),
 
 
   organizations: defineTable({
@@ -109,7 +135,31 @@ export default defineSchema({
     members: v.array(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_clerk_org_id", ["clerkOrgId"]),
+  })
+    .index("by_clerk_org_id", ["clerkOrgId"])
+    .index("by_created", ["createdAt"])
+    .searchIndex("search_name", { searchField: "name" }),
+
+  /**
+   * Who did what in the admin console.
+   *
+   * `entityLabel` is a snapshot of the entity's name at the time, so an entry
+   * about a deleted document still reads as something rather than an orphaned
+   * id.
+   */
+  auditLog: defineTable({
+    actorId: v.id("users"),
+    action: v.string(),
+    entityType: auditEntityTypeValidator,
+    entityId: v.optional(v.string()),
+    entityLabel: v.string(),
+    meta: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_entity", ["entityType", "entityId", "createdAt"])
+    .index("by_entity_type", ["entityType", "createdAt"])
+    .index("by_actor", ["actorId", "createdAt"]),
 
   chats: defineTable({
     documentId: v.id("documents"),

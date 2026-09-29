@@ -1,10 +1,143 @@
 @import "tailwindcss";
 @import "@repo/ui/globals.css";
 @source "../../../packages/ui/src/**/*.tsx";
+@source "../components/**/*.tsx";
+@source "../features/**/*.tsx";
+
+/*
+ * The shared tokens also switch to dark on a prefers-color-scheme media query.
+ * When an admin forces light mode on a dark OS, the theme provider sets
+ * html.light and these restore the light values over that query.
+ */
+html.light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+  
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  
+  --accent: #e0e7ff;
+  --accent-foreground: #3730a3;
+  
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #6366f1;
+  --radius: 0.75rem;
+
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  --sidebar: #f8fafc;
+  --sidebar-foreground: #334155;
+  --sidebar-primary: #4f46e5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #6366f1;
+
+  --chart-1: #4f46e5;
+  --chart-2: #0d9488;
+}
 
 body {
   background: var(--background);
   color: var(--foreground);
-  max-width: 70%;
-  overflow-x: hidden;
+  min-height: 100dvh;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Console polish: one elevation scale, a soft brand glow behind content,
+ * a gentle entrance, and quieter scrollbars. Motion is removed entirely by the
+ * reduced-motion block above.
+ * ------------------------------------------------------------------------- */
+
+@utility surface {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--card);
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.04),
+    0 4px 16px -6px rgb(15 23 42 / 0.08);
+}
+
+@utility surface-hover {
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+  &:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+    box-shadow:
+      0 1px 2px rgb(15 23 42 / 0.05),
+      0 12px 28px -10px color-mix(in oklab, var(--primary) 35%, transparent);
+  }
+}
+
+@utility animate-enter {
+  animation: admin-enter 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes admin-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.dark .surface,
+html.dark .surface {
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.04) inset,
+    0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+
+/* Soft brand glow at the top of the content area. */
+[data-slot='sidebar-inset'] {
+  background-image: radial-gradient(
+    60rem 18rem at 50% -6rem,
+    color-mix(in oklab, var(--primary) 9%, transparent),
+    transparent 70%
+  );
+}
+
+::selection {
+  background: color-mix(in oklab, var(--primary) 25%, transparent);
+}
+
+[data-slot='table'] td,
+[data-slot='table'] th {
+  font-variant-numeric: tabular-nums;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 35%, transparent) transparent;
 }

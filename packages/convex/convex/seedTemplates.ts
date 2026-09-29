@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { type MutationCtx, internalMutation, mutation } from "./_generated/server.js";
+import { logAudit } from "./lib/audit.js";
 import { requireAdmin } from "./lib/auth.js";
 import { templateCatalog } from "./lib/templateCatalog.js";
 
@@ -97,7 +98,14 @@ export const seed = internalMutation({
 export const adminReseedCatalog = mutation({
     args: { overwrite: v.optional(v.boolean()) },
     handler: async (ctx, args) => {
-        await requireAdmin(ctx);
-        return await runSeed(ctx, args.overwrite ?? false);
+        const admin = await requireAdmin(ctx);
+        const result = await runSeed(ctx, args.overwrite ?? false);
+        await logAudit(ctx, admin, {
+            action: "catalog.sync",
+            entityType: "catalog",
+            entityLabel: "Template catalog",
+            meta: { ...result, overwrite: args.overwrite ?? false },
+        });
+        return result;
     },
 });

@@ -32,67 +32,6 @@ export const getAllUsers = query({
   },
 });
 
-export const editAdmin = mutation({
-  args: {
-    clerkId: v.string(),
-    role: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first();
-
-    if (!existing) {
-      throw new Error("User not found");
-    }
-
-    // Without this an admin can demote themselves and lock everyone out of the
-    // dashboard, since role is the only way back in.
-    if (existing._id === admin._id && args.role !== "admin") {
-      throw new Error("You cannot remove your own admin role");
-    }
-
-    await ctx.db.patch(existing._id, { role: args.role });
-    return { success: true, msg: "Admin role changed successfully" };
-  },
-});
-
-export const updateUser = mutation({
-  args: {
-    clerkId: v.string(),
-    name: v.string(),
-    email: v.string(),
-    role: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .first();
-
-    if (!existing) {
-      throw new Error("User not found");
-    }
-
-    if (existing._id === admin._id && args.role !== "admin") {
-      throw new Error("You cannot remove your own admin role");
-    }
-
-    await ctx.db.patch(existing._id, {
-      name: args.name,
-      email: args.email,
-      role: args.role,
-    });
-
-    return { success: true, msg: "User details updated successfully" };
-  },
-});
-
 /**
  * Mirrors the signed-in user's Clerk profile into Convex on login.
  *

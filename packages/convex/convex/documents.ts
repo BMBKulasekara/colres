@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Doc, Id } from "./_generated/dataModel.js";
+import type { Doc } from "./_generated/dataModel.js";
 import { type MutationCtx, mutation, query } from "./_generated/server.js";
 import {
     canAccessDocument,
@@ -9,6 +9,8 @@ import {
     requireDocumentAccessByRef,
     requireUser,
 } from "./lib/auth.js";
+import { logAudit } from "./lib/audit.js";
+import { cascadeDeleteDocument } from "./lib/cascade.js";
 import { applyFieldValues, slugify } from "./lib/templateContent.js";
 import { citationStyleValidator } from "./schema.js";
 
@@ -17,7 +19,12 @@ import { citationStyleValidator } from "./schema.js";
  * static page, and Next.js resolves static segments before the dynamic
  * `[editor]` one, so a document with that slug would be unreachable.
  */
-const RESERVED_SLUGS = new Set(["templates", "new", "settings"]);
+export const RESERVED_SLUGS = new Set(["templates", "new", "settings"]);
+
+/** Lowercase letters, digits and single hyphens between them. */
+export function isValidSlug(slug: string): boolean {
+    return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+}
 
 /**
  * Slugs address documents in the URL, so they must be globally unique.
@@ -253,12 +260,18 @@ export const adminDeleteDocument = mutation({
         id: v.id("documents"),
     },
     handler: async (ctx, args) => {
-        await requireAdmin(ctx);
+        const admin = await requireAdmin(ctx);
         const document = await ctx.db.get(args.id);
         if (!document) {
             throw new Error("Document not found");
         }
         await cascadeDeleteDocument(ctx, args.id);
+        await logAudit(ctx, admin, {
+            action: "document.delete",
+            entityType: "document",
+            entityId: args.id,
+            entityLabel: document.title,
+        });
         return document;
     },
 });
@@ -273,7 +286,7 @@ export const adminUpdateDocument = mutation({
         description: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
-        await requireAdmin(ctx);
+        const admin = await requireAdmin(ctx);
         const { id, ...updates } = args;
 
         const document = await ctx.db.get(id);
@@ -281,7 +294,17 @@ export const adminUpdateDocument = mutation({
             throw new Error("Document not found");
         }
 
-        if (updates.slug && updates.slug !== document.slug) {
+        if (updates.title !== undefined && !updates.title.trim()) {
+            throw new Error("Title cannot be empty");
+        }
+
+        if (updates.slug !== undefined && updates.slug !== document.slug) {
+            if (!isValidSlug(updates.slug)) {
+                throw new Error("Slugs may only contain lowercase letters, numbers and hyphens");
+            }
+            if (RESERVED_SLUGS.has(updates.slug)) {
+                throw new Error(`"${updates.slug}" is reserved and cannot be used as a slug`);
+            }
             const clash = await ctx.db
                 .query("documents")
                 .withIndex("by_slug", (q) => q.eq("slug", updates.slug as string))
@@ -292,37 +315,27 @@ export const adminUpdateDocument = mutation({
         }
 
         await ctx.db.patch(id, { ...updates, updatedAt: Date.now() });
+
+        const changed = Object.entries(updates)
+            .filter(([key, value]) => value !== undefined && value !== document[key as keyof typeof document])
+            .map(([key]) => key);
+        if (changed.length > 0) {
+            await logAudit(ctx, admin, {
+                action:
+                    changed.length === 1 && changed[0] === "status"
+                        ? updates.status
+                            ? "document.activate"
+                            : "document.draft"
+                        : "document.update",
+                entityType: "document",
+                entityId: id,
+                entityLabel: updates.title ?? document.title,
+                meta: { fields: changed },
+            });
+        }
         return await ctx.db.get(id);
     },
 });
-
-/** Removes the document and everything keyed to it. */
-async function cascadeDeleteDocument(ctx: MutationCtx, id: Id<"documents">) {
-    const related = await Promise.all([
-        ctx.db
-            .query("chats")
-            .withIndex("by_document_id", (q) => q.eq("documentId", id))
-            .collect(),
-        ctx.db
-            .query("comments")
-            .withIndex("by_document_id", (q) => q.eq("documentId", id))
-            .collect(),
-        ctx.db
-            .query("references")
-            .withIndex("by_document_id", (q) => q.eq("documentId", id))
-            .collect(),
-        ctx.db
-            .query("paperSuggestions")
-            .withIndex("by_document_id", (q) => q.eq("documentId", id))
-            .collect(),
-    ]);
-
-    for (const row of related.flat()) {
-        await ctx.db.delete(row._id);
-    }
-
-    await ctx.db.delete(id);
-}
 
 export const getDocumentsByOrgId = query({
     args: {
@@ -337,25 +350,6 @@ export const getDocumentsByOrgId = query({
             .query("documents")
             .withIndex("by_org_id", (q) => q.eq("orgId", args.orgId))
             .collect();
-    },
-});
-
-export const getAllDocuments = query({
-    handler: async (ctx) => {
-        await requireAdmin(ctx);
-        const documents = await ctx.db.query("documents").collect();
-        return await Promise.all(
-            documents.map(async (doc) => {
-                const author = await ctx.db.get(doc.author);
-                const template = doc.templateId ? await ctx.db.get(doc.templateId) : null;
-                return {
-                    ...doc,
-                    authorName: author ? author.name : "Unknown User",
-                    authorEmail: author ? author.email : "",
-                    templateName: template ? template.name : null,
-                };
-            })
-        );
     },
 });
 

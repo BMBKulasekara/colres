@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server.js";
-import { requireAdmin, requireUser } from "./lib/auth.js";
+import { requireUser } from "./lib/auth.js";
 
 /**
  * Mirrors a Clerk organization into Convex.
@@ -69,12 +69,5 @@ export const getOrganizationByClerkId = query({
       .query("organizations")
       .withIndex("by_clerk_org_id", (q) => q.eq("clerkOrgId", args.clerkOrgId))
       .first();
-  },
-});
-
-export const getAllOrganizations = query({
-  handler: async (ctx) => {
-    await requireAdmin(ctx);
-    return await ctx.db.query("organizations").collect();
   },
 });
