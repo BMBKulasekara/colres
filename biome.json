@@ -8,6 +8,8 @@
   "files": {
     "includes": [
       "apps/**",
+      "e2e/**",
+      "playwright.config.ts",
       "!**/*.css",
       "!packages",
       "!**/node_modules",
