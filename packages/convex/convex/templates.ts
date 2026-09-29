@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel.js";
 import { type QueryCtx, mutation, query } from "./_generated/server.js";
+import { logAudit } from "./lib/audit.js";
 import { getUserOrNull, requireAdmin } from "./lib/auth.js";
 import { slugify } from "./lib/templateContent.js";
 import {
@@ -37,6 +38,7 @@ const fieldValidator = v.object({
     placeholder: v.string(),
     defaultValue: v.optional(v.string()),
     help: v.optional(v.string()),
+    dateStyle: v.optional(v.union(v.literal("month-day-year"), v.literal("day-month-year"))),
 });
 
 const classOptionValidator = v.object({
@@ -266,7 +268,7 @@ export const adminCreateTemplate = mutation({
         const slug = await uniqueTemplateSlug(ctx, requestedSlug || rest.name);
         const now = Date.now();
 
-        return await ctx.db.insert("templates", {
+        const id = await ctx.db.insert("templates", {
             ...rest,
             slug,
             version: 1,
@@ -275,6 +277,13 @@ export const adminCreateTemplate = mutation({
             createdAt: now,
             updatedAt: now,
         });
+        await logAudit(ctx, admin, {
+            action: "template.create",
+            entityType: "template",
+            entityId: id,
+            entityLabel: rest.name,
+        });
+        return id;
     },
 });
 
@@ -306,10 +315,12 @@ export const adminUpdateTemplate = mutation({
         featured: v.optional(v.boolean()),
         order: v.optional(v.number()),
         orgId: v.optional(v.string()),
+        /** Removes the thumbnail; `thumbnailId: undefined` can't express that. */
+        clearThumbnail: v.optional(v.boolean()),
     },
     handler: async (ctx, args) => {
-        await requireAdmin(ctx);
-        const { id, ...updates } = args;
+        const admin = await requireAdmin(ctx);
+        const { id, clearThumbnail, ...updates } = args;
 
         const existing = await ctx.db.get(id);
         if (!existing) {
@@ -327,6 +338,13 @@ export const adminUpdateTemplate = mutation({
             patch.slug = await uniqueTemplateSlug(ctx, patch.slug, id);
         }
 
+        // A replaced or cleared thumbnail's file is no longer referenced.
+        if (clearThumbnail) patch.thumbnailId = undefined;
+        const thumbnailChanged = clearThumbnail || (patch.thumbnailId !== undefined && patch.thumbnailId !== existing.thumbnailId);
+        if (thumbnailChanged && existing.thumbnailId) {
+            await ctx.storage.delete(existing.thumbnailId);
+        }
+
         // Bump the version whenever the seeded body or the compilation
         // contract changes, so documents keep a truthful provenance record.
         const contractKeys = [
@@ -342,10 +360,22 @@ export const adminUpdateTemplate = mutation({
         ];
         const contractChanged = contractKeys.some((key) => key in patch);
 
+        const version = contractChanged ? existing.version + 1 : existing.version;
         await ctx.db.patch(id, {
             ...patch,
-            version: contractChanged ? existing.version + 1 : existing.version,
+            version,
             updatedAt: Date.now(),
+        });
+
+        await logAudit(ctx, admin, {
+            action: "template.update",
+            entityType: "template",
+            entityId: id,
+            entityLabel: (patch.name as string | undefined) ?? existing.name,
+            meta: {
+                fields: Object.keys(patch),
+                ...(version !== existing.version ? { fromVersion: existing.version, toVersion: version } : {}),
+            },
         });
 
         return await ctx.db.get(id);
@@ -358,12 +388,42 @@ export const adminSetTemplateStatus = mutation({
         status: v.union(v.literal("draft"), v.literal("published")),
     },
     handler: async (ctx, args) => {
-        await requireAdmin(ctx);
+        const admin = await requireAdmin(ctx);
         const template = await ctx.db.get(args.id);
         if (!template) {
             throw new Error("Template not found");
         }
+        if (template.status === args.status) return template;
         await ctx.db.patch(args.id, { status: args.status, updatedAt: Date.now() });
+        await logAudit(ctx, admin, {
+            action: args.status === "published" ? "template.publish" : "template.unpublish",
+            entityType: "template",
+            entityId: args.id,
+            entityLabel: template.name,
+        });
+        return await ctx.db.get(args.id);
+    },
+});
+
+export const adminSetFeatured = mutation({
+    args: {
+        id: v.id("templates"),
+        featured: v.boolean(),
+    },
+    handler: async (ctx, args) => {
+        const admin = await requireAdmin(ctx);
+        const template = await ctx.db.get(args.id);
+        if (!template) {
+            throw new Error("Template not found");
+        }
+        if (template.featured === args.featured) return template;
+        await ctx.db.patch(args.id, { featured: args.featured, updatedAt: Date.now() });
+        await logAudit(ctx, admin, {
+            action: args.featured ? "template.feature" : "template.unfeature",
+            entityType: "template",
+            entityId: args.id,
+            entityLabel: template.name,
+        });
         return await ctx.db.get(args.id);
     },
 });
@@ -380,9 +440,10 @@ export const adminDuplicateTemplate = mutation({
         const { _id, _creationTime, ...copy } = source;
         const now = Date.now();
 
-        return await ctx.db.insert("templates", {
+        const name = `${source.name} (copy)`;
+        const newId = await ctx.db.insert("templates", {
             ...copy,
-            name: `${source.name} (copy)`,
+            name,
             slug: await uniqueTemplateSlug(ctx, `${source.slug}-copy`),
             // A copy starts unpublished and un-featured so it cannot silently
             // appear in the gallery alongside its original.
@@ -394,16 +455,31 @@ export const adminDuplicateTemplate = mutation({
             createdAt: now,
             updatedAt: now,
         });
+        await logAudit(ctx, admin, {
+            action: "template.duplicate",
+            entityType: "template",
+            entityId: newId,
+            entityLabel: name,
+            meta: { sourceId: args.id, sourceName: source.name },
+        });
+        return newId;
     },
 });
 
 export const adminDeleteTemplate = mutation({
     args: { id: v.id("templates") },
     handler: async (ctx, args) => {
-        await requireAdmin(ctx);
+        const admin = await requireAdmin(ctx);
         const template = await ctx.db.get(args.id);
         if (!template) {
             throw new Error("Template not found");
+        }
+        // A template in use is unpublished rather than deleted, so the gallery
+        // history and the provenance link on those documents stay intact.
+        if (template.usageCount > 0) {
+            throw new Error(
+                `This template is used by ${template.usageCount} document${template.usageCount === 1 ? "" : "s"}. Unpublish it instead.`
+            );
         }
 
         // Documents keep `templateSnapshot`, so they survive the deletion with
@@ -419,6 +495,12 @@ export const adminDeleteTemplate = mutation({
             await ctx.storage.delete(template.thumbnailId);
         }
         await ctx.db.delete(args.id);
+        await logAudit(ctx, admin, {
+            action: "template.delete",
+            entityType: "template",
+            entityId: args.id,
+            entityLabel: template.name,
+        });
         return template;
     },
 });

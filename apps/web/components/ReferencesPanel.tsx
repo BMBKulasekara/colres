@@ -19,7 +19,9 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { yearSuffixes } from '../lib/authorDate';
+import { repeatedAuthors } from '../lib/authorPage';
 import {
+  CITATION_STYLE_LABELS,
   type CitationStyle,
   formatReference,
   isAuthorDateStyle,
@@ -28,6 +30,18 @@ import {
   type ReferenceType,
 } from '../lib/citationFormat';
 import { orderBibliography } from '../lib/citationNumbering';
+import { PdfReferenceImport } from './references/PdfReferenceImport';
+
+/** The styles offered in the picker, most used first. */
+const STYLE_CHOICES: CitationStyle[] = [
+  'apa',
+  'ieee',
+  'harvard',
+  'mla',
+  'vancouver',
+  'chicago',
+  'acm',
+];
 
 interface ReferencesPanelProps {
   documentId: any;
@@ -49,6 +63,11 @@ interface ReferencesPanelProps {
   onInsertBibliography?: () => void;
   /** True once the document has a References section, so the button can say so. */
   hasBibliography?: boolean;
+  /**
+   * Changes the document's citation style. Every in-text citation and the
+   * reference list follow it. Absent where the style cannot be changed.
+   */
+  onCitationStyleChange?: (style: CitationStyle) => void;
 }
 
 /**
@@ -73,6 +92,7 @@ interface ManualEntry {
   accessed: string;
   edition: string;
   editors: string;
+  authorAbbreviation: string;
 }
 
 const EMPTY_MANUAL: ManualEntry = {
@@ -92,6 +112,7 @@ const EMPTY_MANUAL: ManualEntry = {
   accessed: '',
   edition: '',
   editors: '',
+  authorAbbreviation: '',
 };
 
 /**
@@ -154,6 +175,7 @@ const MANUAL_LABELS: Record<keyof ManualEntry, string> = {
   accessed: 'Date accessed',
   edition: 'Edition, e.g. 5 or Rev.',
   editors: 'Editors, comma separated',
+  authorAbbreviation: 'Group author abbreviation, e.g. NIMH (optional)',
 };
 
 const TYPE_LABELS: Record<ReferenceType, string> = {
@@ -223,6 +245,7 @@ export function ReferencesPanel({
   citationOrder,
   onInsertBibliography,
   hasBibliography = false,
+  onCitationStyleChange,
 }: ReferencesPanelProps) {
   const references = useQuery(api.references.listReferences, { documentId });
   const addReference = useMutation(api.references.addReference);
@@ -252,10 +275,22 @@ export function ReferencesPanel({
     [references, citationOrder, citationStyle]
   );
 
-  /** "2020a" / "2020b", worked out over the whole list so the text agrees. */
+  /** "2020a" / "2020b", worked out over the whole list so the text agrees. MLA has no year letters. */
   const suffixes = useMemo(
-    () => (authorDate ? yearSuffixes(references ?? []) : new Map<string, string>()),
-    [authorDate, references]
+    () =>
+      authorDate && citationStyle !== 'mla'
+        ? yearSuffixes(references ?? [])
+        : new Map<string, string>(),
+    [authorDate, citationStyle, references]
+  );
+
+  /** MLA: entries whose authors repeat the entry above, printed as "---.". */
+  const repeated = useMemo(
+    () =>
+      citationStyle === 'mla'
+        ? repeatedAuthors(ordered.map(({ reference }) => reference))
+        : new Set<string>(),
+    [citationStyle, ordered]
   );
 
   const handleDoiLookup = async () => {
@@ -320,6 +355,8 @@ export function ReferencesPanel({
           .map((name) => name.trim())
           .filter(Boolean),
         accessed: accessed !== undefined && !Number.isNaN(accessed) ? accessed : undefined,
+        // Only an author–date style uses it, and only for a braced group author.
+        authorAbbreviation: authorDate ? manual.authorAbbreviation.trim() || undefined : undefined,
         source: 'manual',
       });
       setManual({ ...EMPTY_MANUAL });
@@ -398,6 +435,37 @@ export function ReferencesPanel({
         )}
       </div>
 
+      {/* The document's citation style. Changing it re-sets every citation in
+          the text and every entry below by that style's own rules. */}
+      <div className="space-y-1">
+        <label
+          htmlFor="citation-style"
+          className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+        >
+          Citation style
+        </label>
+        <select
+          id="citation-style"
+          value={citationStyle}
+          disabled={!onCitationStyleChange}
+          onChange={(e) => onCitationStyleChange?.(e.target.value as CitationStyle)}
+          className="h-8 w-full rounded-md border border-border bg-background px-2 text-xs outline-none focus:border-primary disabled:opacity-60"
+        >
+          {[...new Set<CitationStyle>([...STYLE_CHOICES, citationStyle])].map((style) => (
+            <option key={style} value={style}>
+              {CITATION_STYLE_LABELS[style]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <PdfReferenceImport
+        documentId={documentId}
+        citationStyle={citationStyle}
+        references={references ?? []}
+        onInsertCitation={onInsertCitation}
+      />
+
       <div className="space-y-2">
         <div className="flex gap-1.5">
           <div className="flex items-center gap-1.5 flex-1 rounded-lg border border-border bg-background px-2 py-1.5">
@@ -457,7 +525,9 @@ export function ReferencesPanel({
             {authorDate && (
               <p className="text-[10px] leading-snug text-muted-foreground">
                 APA prints titles in sentence case. Wrap a name in braces, e.g. {'{Freud}'}, to keep
-                its capital.
+                its capital. Enter a group author in braces too, e.g.{' '}
+                {'{American Psychological Association}'}, so it is spelled out in full. A suffix
+                goes after the name: Alexander C. Evans Jr.
               </p>
             )}
             <Input
@@ -466,6 +536,16 @@ export function ReferencesPanel({
               placeholder={MANUAL_LABELS.authors}
               className="h-8 text-xs"
             />
+            {/* APA defines a group author's abbreviation at its first citation
+                and uses it after that, so it is only asked for a group author. */}
+            {authorDate && /^\s*\{[^{}]+\}\s*$/.test(manual.authors) && (
+              <Input
+                value={manual.authorAbbreviation}
+                onChange={(e) => setManual({ ...manual, authorAbbreviation: e.target.value })}
+                placeholder={MANUAL_LABELS.authorAbbreviation}
+                className="h-8 text-xs"
+              />
+            )}
 
             <div className="flex gap-2">
               <Input
@@ -573,6 +653,7 @@ export function ReferencesPanel({
                   <ReferenceText
                     segments={formatReference(reference, citationStyle, {
                       yearSuffix: suffixes.get(reference.citationKey),
+                      repeatedAuthor: repeated.has(reference.citationKey),
                     })}
                   />
                 </span>
@@ -583,9 +664,9 @@ export function ReferencesPanel({
                   <AlertTriangle className="h-3 w-3 shrink-0 mt-px" />
                   <span>
                     {authorDate
-                      ? 'Not cited in the text yet. APA Style expects every work in the reference list to be cited in the text.'
+                      ? `Not cited in the text yet. ${CITATION_STYLE_LABELS[citationStyle]} expects every work in the list to be cited in the text.`
                       : numbered
-                        ? 'Not cited in the text yet, so it has no number. IEEE numbers references in the order they are first cited.'
+                        ? `Not cited in the text yet, so it has no number. ${CITATION_STYLE_LABELS[citationStyle]} numbers references in the order they are first cited.`
                         : 'Not cited in the text yet.'}
                   </span>
                 </p>

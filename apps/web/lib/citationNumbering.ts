@@ -16,7 +16,12 @@
  */
 
 import { sortAuthorDate } from './authorDate.ts';
-import { type CitationStyle, type DisplayReference, isAuthorDateStyle } from './citationFormat.ts';
+import {
+  type CitationStyle,
+  type DisplayReference,
+  isAuthorDateStyle,
+  type ReferenceSegment,
+} from './citationFormat.ts';
 
 /** One citation as it appears in the document, in document order. */
 export interface CitationOccurrence {
@@ -49,6 +54,12 @@ export interface CitationLabel {
   hidden: boolean;
   /** No reference in the bibliography has this key. */
   unresolved: boolean;
+  /**
+   * The same label split into styled runs, present only when part of it is
+   * italic — an authorless book cited by its title, "(*Big Book*, 2020)".
+   * `text` is always the plain equivalent.
+   */
+  segments?: ReferenceSegment[];
 }
 
 export interface CitationNumbering {
@@ -76,7 +87,7 @@ const MIN_RANGE_LENGTH = 3;
  * Consecutive stretches collapse to a range and everything else is listed,
  * so 1,2,3,7 becomes "[1]-[3], [7]".
  */
-function formatGroup(numbers: number[]): string {
+function formatGroup(numbers: number[], parenthesised = false): string {
   const sorted = [...new Set(numbers)].sort((a, b) => a - b);
   if (sorted.length === 0) return '';
 
@@ -88,7 +99,12 @@ function formatGroup(numbers: number[]): string {
     if (!isEnd) continue;
 
     const runLength = i - runStart;
-    if (runLength >= MIN_RANGE_LENGTH) {
+    if (parenthesised) {
+      // Vancouver: one set of parentheses, commas with no spaces: (1,3–5).
+      if (runLength >= MIN_RANGE_LENGTH)
+        parts.push(`${sorted[runStart]}${RANGE_DASH}${sorted[i - 1]}`);
+      else for (let j = runStart; j < i; j++) parts.push(String(sorted[j]));
+    } else if (runLength >= MIN_RANGE_LENGTH) {
       parts.push(`[${sorted[runStart]}]${RANGE_DASH}[${sorted[i - 1]}]`);
     } else {
       for (let j = runStart; j < i; j++) parts.push(`[${sorted[j]}]`);
@@ -96,7 +112,7 @@ function formatGroup(numbers: number[]): string {
     runStart = i;
   }
 
-  return parts.join(', ');
+  return parenthesised ? `(${parts.join(',')})` : parts.join(', ');
 }
 
 /**
@@ -108,8 +124,12 @@ function formatGroup(numbers: number[]): string {
  */
 export function numberCitations(
   occurrences: readonly CitationOccurrence[],
-  knownKeys: ReadonlySet<string>
+  knownKeys: ReadonlySet<string>,
+  style: CitationStyle = 'ieee'
 ): CitationNumbering {
+  // IEEE brackets each number, "[1], [3]"; Vancouver (NLM) puts the whole
+  // group in one set of parentheses, "(1,3)".
+  const parenthesised = style === 'vancouver';
   const numbers = new Map<string, number>();
   const order: string[] = [];
 
@@ -149,14 +169,18 @@ export function numberCitations(
     if (resolved.length === 0) {
       // Nothing in this group is in the bibliography. Show a marker the author
       // can see and act on rather than an empty gap.
-      leader.text = '[?]';
+      leader.text = parenthesised ? '(?)' : '[?]';
       leader.unresolved = true;
     } else {
       const first = group[0];
       if (group.length === 1 && first?.locator) {
-        leader.text = `[${numbers.get(first.citationKey)}, ${first.locator}]`;
+        const n = numbers.get(first.citationKey);
+        leader.text = parenthesised ? `(${n}, ${first.locator})` : `[${n}, ${first.locator}]`;
       } else {
-        leader.text = formatGroup(resolved.map((o) => numbers.get(o.citationKey) as number));
+        leader.text = formatGroup(
+          resolved.map((o) => numbers.get(o.citationKey) as number),
+          parenthesised
+        );
       }
       leader.unresolved = resolved.length < group.length;
     }
@@ -200,7 +224,7 @@ export function orderBibliography<T extends DisplayReference>(
   const citedKeys = new Set(order);
 
   if (style && isAuthorDateStyle(style)) {
-    return sortAuthorDate(references).map((reference) => ({
+    return sortAuthorDate(references, style).map((reference) => ({
       reference,
       cited: citedKeys.has(reference.citationKey),
     }));

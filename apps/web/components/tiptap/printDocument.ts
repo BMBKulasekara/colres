@@ -1,11 +1,7 @@
-import { labelAuthorDateCitations } from '../../lib/authorDate';
 import { escapeHtml, renderBibliographyHtml } from '../../lib/bibliographyHtml';
-import {
-  type CitationStyle,
-  type DisplayReference,
-  isAuthorDateStyle,
-} from '../../lib/citationFormat';
-import { type CitationOccurrence, numberCitations } from '../../lib/citationNumbering';
+import type { CitationStyle, DisplayReference } from '../../lib/citationFormat';
+import { labelCitations } from '../../lib/citationLabels';
+import type { CitationOccurrence } from '../../lib/citationNumbering';
 import {
   EM_SPACE,
   type FloatOccurrence,
@@ -319,6 +315,7 @@ function buildStyles(geometry: PageGeometry) {
 
     ${geometry.styleId === 'ieee' ? IEEE_PRINT_STYLES : ''}
     ${geometry.styleId === 'apa' ? APA_PRINT_STYLES : ''}
+    ${geometry.styleId === 'mla' ? MLA_PRINT_STYLES : ''}
   `;
 }
 
@@ -429,7 +426,12 @@ const APA_PRINT_STYLES = `
       gap: 1em;
       line-height: 1.2;
     }
-    .sheet-running-head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sheet-running-head {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: uppercase;
+    }
 
     .sheet-body { position: relative; }
     .sheet-body > :not(p) { clear: both; }
@@ -520,6 +522,103 @@ const APA_PRINT_STYLES = `
 `;
 
 /**
+ * MLA 9 typography for print. Deliberately a near-copy of the `.doc-mla` rules
+ * in `globals.css`, for the same reason as the IEEE block above.
+ *
+ * Like APA, MLA prints through explicit sheets so that every page carries the
+ * author's last name and its number, top right. The first-page heading is
+ * marked with classes before pagination — see `markMlaStructure`.
+ */
+const MLA_PRINT_STYLES = `
+    body {
+      font-family: 'Times New Roman', Times, serif;
+      line-height: 2;
+      text-align: left;
+      hyphens: manual;
+      max-width: none;
+      margin: 0;
+    }
+
+    .sheet {
+      position: relative;
+      box-sizing: border-box;
+      overflow: hidden;
+      break-after: page;
+      page-break-after: always;
+    }
+    .sheet:last-child { break-after: auto; page-break-after: auto; }
+    .sheet--overflow { overflow: visible; height: auto !important; }
+
+    /* "Moore 3", flush right, half an inch from the top. */
+    .sheet-header {
+      position: absolute;
+      transform: translateY(-50%);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.25em;
+      line-height: 1.2;
+    }
+    .sheet-running-head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .sheet-body { position: relative; }
+
+    h1, h2, h3, h4, h5, h6 {
+      font-size: 1em;
+      font-weight: 400;
+      line-height: 2;
+      margin: 0;
+    }
+
+    h1 { text-align: center; }
+    h2 { text-align: left; font-weight: 700; }
+    h3 { text-align: left; font-style: italic; }
+    h4 { text-align: center; font-weight: 700; }
+    h5 { text-align: center; font-style: italic; }
+
+    p { margin: 0; text-indent: 0.5in; }
+    p.continued { text-indent: 0; }
+
+    /* The first-page heading: name, instructor, course, date. */
+    p.mla-heading { text-indent: 0; }
+
+    /* "Works Cited", centred and plain like the title. */
+    h1:has(+ .bib-list),
+    h2:has(+ .bib-list),
+    h3:has(+ .bib-list) { font-weight: 400; font-style: normal; text-align: center; }
+
+    blockquote {
+      border: none;
+      padding: 0;
+      margin: 0 0 0 0.5in;
+      font-style: normal;
+      break-inside: auto;
+    }
+    blockquote p { text-indent: 0; }
+    blockquote p + p { text-indent: 0.5in; }
+
+    ul, ol { margin: 0; padding-left: 0.5in; }
+    li { margin: 0; }
+
+    /* Tables and figures: labels and captions flush left; "Table 1" above
+       the table, "Fig. 1." below the figure. */
+    .float-caption { text-align: left; font-size: 1em; line-height: 2; }
+    .float-label-line { text-transform: none; }
+    .float-note { text-indent: 0; font-size: 1em; }
+    .float table { font-size: 1em; }
+
+    /* Works Cited: alphabetical, double-spaced, 0.5 in. hanging indent. */
+    .bib-list { margin: 0; }
+    .bib-item--hanging {
+      display: block;
+      margin: 0;
+      padding-left: 0.5in;
+      text-indent: -0.5in;
+      line-height: 2;
+      break-inside: auto;
+    }
+`;
+
+/**
  * How far into the document a horizontal rule is still taken to end the title
  * block. Must match `BANNER_SCAN_LIMIT` in the pagination extension, or the
  * printout would put the columns somewhere the preview did not.
@@ -583,9 +682,7 @@ function resolveCitations(
       index > 0 && /^[\s,;]*$/.test(textBetween(marks[index - 1] as Element, mark)),
   }));
 
-  const { labels } = isAuthorDateStyle(citationStyle)
-    ? labelAuthorDateCitations(occurrences, references)
-    : numberCitations(occurrences, new Set(references.map((reference) => reference.citationKey)));
+  const { labels } = labelCitations(occurrences, references, citationStyle);
 
   marks.forEach((mark, index) => {
     const label = labels[index];
@@ -597,7 +694,19 @@ function resolveCitations(
       mark.remove();
       return;
     }
-    mark.textContent = label?.text ?? '[?]';
+    if (label?.segments) {
+      // An italic title inside the label: "(<em>Big Book</em>, 2020)".
+      mark.replaceChildren(
+        ...label.segments.map((segment) => {
+          if (!segment.italic) return mark.ownerDocument.createTextNode(segment.text);
+          const run = mark.ownerDocument.createElement('em');
+          run.textContent = segment.text;
+          return run;
+        })
+      );
+    } else {
+      mark.textContent = label?.text ?? '[?]';
+    }
     if (label?.unresolved) mark.classList.add('citation-unresolved');
   });
 }
@@ -781,22 +890,28 @@ export function buildDocument({
     references,
     citationOrder,
     citationStyle,
-    geometry.styleId === 'apa' ? 'apa' : 'ieee'
+    geometry.styleId === 'apa' ? 'apa' : geometry.styleId === 'mla' ? 'mla' : 'ieee'
   );
   const { banner, flow } = splitAtBannerRule(prepared, geometry.columns);
-  const apa = geometry.styleId === 'apa' ? markApaStructure(prepared) : null;
+  // APA and MLA both lift a running head out of the flow into the page header.
+  const structure =
+    geometry.styleId === 'apa'
+      ? markApaStructure(prepared)
+      : geometry.styleId === 'mla'
+        ? markMlaStructure(prepared)
+        : null;
 
   const body =
     geometry.columns > 1
       ? `${banner ? `<div class="print-banner">${banner}</div>` : ''}<div class="print-flow">${flow}</div>`
-      : (apa?.html ?? prepared);
+      : (structure?.html ?? prepared);
 
   return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <title>${escapeHtml(title)}</title>
-${apa?.runningHead ? `<meta name="running-head" content="${escapeHtml(apa.runningHead)}">` : ''}
+${structure?.runningHead ? `<meta name="running-head" content="${escapeHtml(structure.runningHead)}">` : ''}
 <style>${buildStyles(geometry)}</style>
 </head>
 <body>${body}</body>
@@ -835,6 +950,32 @@ export function markApaStructure(html: string): { html: string; runningHead: str
 }
 
 /**
+ * Marks the structure the MLA stylesheet needs before the paper is cut into
+ * sheets:
+ *
+ *  - the paragraphs before the first `<h1>` (the title) are the first-page
+ *    heading, flush left;
+ *  - the page header — the author's last name, kept in the running-head node —
+ *    is taken out of the flow, to be printed beside every page number.
+ */
+export function markMlaStructure(html: string): { html: string; runningHead: string } {
+  if (typeof DOMParser === 'undefined') return { html, runningHead: '' };
+
+  const body = new DOMParser().parseFromString(html, 'text/html').body;
+
+  const heads = Array.from(body.querySelectorAll('[data-running-head]'));
+  const runningHead = heads[0]?.textContent?.trim() ?? '';
+  for (const head of heads) head.remove();
+
+  for (const child of Array.from(body.children)) {
+    if (child.tagName === 'H1' || child.hasAttribute('data-page-break')) break;
+    if (child.tagName === 'P') child.classList.add('mla-heading');
+  }
+
+  return { html: body.innerHTML, runningHead };
+}
+
+/**
  * Turns stored document HTML into output-ready HTML: citation markers resolved
  * to their numbers, and the reference list rendered under the References
  * heading.
@@ -859,7 +1000,8 @@ export function prepareDocumentForOutput(
   appendBibliography(
     parsed.body,
     renderBibliographyHtml(references, citationOrder, citationStyle),
-    isAuthorDateStyle(citationStyle) && references.length === 1
+    // "Reference", singular, over a list of one is APA's rule alone.
+    citationStyle === 'apa' && references.length === 1
   );
 
   return parsed.body.innerHTML;

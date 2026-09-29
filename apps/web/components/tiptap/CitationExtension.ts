@@ -1,4 +1,13 @@
 import { mergeAttributes, Node } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Decoration } from '@tiptap/pm/view';
+import type { ReferenceSegment } from '../../lib/citationFormat';
+
+/** Sets an attribute, or removes it when the value is null. */
+function toggleAttribute(element: HTMLElement, name: string, value: string | null) {
+  if (value === null) element.removeAttribute(name);
+  else element.setAttribute(name, value);
+}
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -80,6 +89,50 @@ export const Citation = Node.create({
 
   renderHTML({ HTMLAttributes }) {
     return ['span', mergeAttributes(HTMLAttributes, { class: 'citation-mark' })];
+  },
+
+  /**
+   * The marker normally has no children: CSS paints its label. When part of
+   * the label is italic — APA cites an authorless book by its italic title —
+   * the `CitationNumbering` decoration carries the styled runs in its spec and
+   * this view draws them as real spans, since `content: attr()` cannot style
+   * part of a string.
+   */
+  addNodeView() {
+    return ({ node, decorations }) => {
+      const dom = document.createElement('span');
+
+      const render = (current: PMNode, decos: readonly Decoration[]) => {
+        // Added, not assigned: ProseMirror puts its own classes on this element,
+        // such as the selected-node outline, and they must survive an update.
+        dom.classList.add('citation-mark');
+        dom.setAttribute('data-citation', current.attrs.citationKey);
+        toggleAttribute(dom, 'data-locator', current.attrs.locator || null);
+        toggleAttribute(dom, 'data-narrative', current.attrs.narrative ? 'true' : null);
+
+        const segments = decos
+          .map((deco) => (deco.spec as { citationSegments?: ReferenceSegment[] }).citationSegments)
+          .find(Boolean);
+        dom.replaceChildren(
+          ...(segments ?? []).map((segment) => {
+            const run = document.createElement(segment.italic ? 'em' : 'span');
+            run.textContent = segment.text;
+            return run;
+          })
+        );
+      };
+
+      render(node, decorations as readonly Decoration[]);
+
+      return {
+        dom,
+        update: (updated, updatedDecorations) => {
+          if (updated.type.name !== this.name) return false;
+          render(updated, updatedDecorations as readonly Decoration[]);
+          return true;
+        },
+      };
+    };
   },
 
   /** Copy and paste get the key, which is the durable identifier. */

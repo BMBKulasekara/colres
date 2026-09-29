@@ -6,7 +6,7 @@
  * except through `@page` margin boxes, which only Chromium supports: Firefox
  * and Safari print them blank. No element in a continuous flow can know which
  * page it lands on either, because the browser decides that while printing.
- * So for formats with a page header (APA), the pages are made here instead:
+ * So for formats with a page header (APA, MLA), the pages are made here instead:
  * every sheet is exactly one physical page, with the margins as padding and
  * the header drawn inside the top margin, and the printer is told to add no
  * margins of its own. Any browser prints that the same way.
@@ -28,7 +28,11 @@ export interface SheetOptions {
   pageWidthPx: number;
   pageHeightPx: number;
   margin: { top: number; right: number; bottom: number; left: number };
-  /** Printed in capitals at the top left of every page, when given. */
+  /**
+   * Printed in every page's header before the page number, when given: APA's
+   * stylesheet sets it in capitals at the top left, MLA's as typed beside the
+   * number at the top right.
+   */
   runningHead?: string;
 }
 
@@ -62,7 +66,7 @@ export function paginateIntoSheets(doc: Document, options: SheetOptions): number
 
     const head = doc.createElement('span');
     head.className = 'sheet-running-head';
-    head.textContent = options.runningHead ? options.runningHead.toUpperCase() : '';
+    head.textContent = options.runningHead ?? '';
 
     const number = doc.createElement('span');
     number.className = 'sheet-number';

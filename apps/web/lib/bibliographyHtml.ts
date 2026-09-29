@@ -16,15 +16,16 @@
  * (editor) and `printDocument.ts` (paper), and use these same class names.
  */
 
-import { yearSuffixes } from './authorDate';
+import { yearSuffixes } from './authorDate.ts';
+import { repeatedAuthors } from './authorPage.ts';
 import {
   type CitationStyle,
   type DisplayReference,
   formatReference,
   isAuthorDateStyle,
   isNumberedStyle,
-} from './citationFormat';
-import { orderBibliography } from './citationNumbering';
+} from './citationFormat.ts';
+import { orderBibliography } from './citationNumbering.ts';
 
 export function escapeHtml(value: string): string {
   return value
@@ -54,34 +55,37 @@ export function renderBibliographyHtml(
 
   const numbered = isNumberedStyle(style);
   const authorDate = isAuthorDateStyle(style);
-  const suffixes = authorDate ? yearSuffixes(references) : undefined;
+  // Year letters for APA and Harvard; MLA has no year in its citations.
+  const suffixes = authorDate && style !== 'mla' ? yearSuffixes(references) : undefined;
+  const ordered = orderBibliography(references, citationOrder, style);
+  const repeated =
+    style === 'mla' ? repeatedAuthors(ordered.map(({ reference }) => reference)) : undefined;
 
-  const items = orderBibliography(references, citationOrder, style).map(
-    ({ reference, number, cited }) => {
-      const body = formatReference(reference, style, {
-        yearSuffix: suffixes?.get(reference.citationKey),
-      })
-        .map((segment) =>
-          segment.italic ? `<i>${escapeHtml(segment.text)}</i>` : escapeHtml(segment.text)
-        )
-        .join('');
+  const items = ordered.map(({ reference, number, cited }) => {
+    const body = formatReference(reference, style, {
+      yearSuffix: suffixes?.get(reference.citationKey),
+      repeatedAuthor: repeated?.has(reference.citationKey),
+    })
+      .map((segment) =>
+        segment.italic ? `<i>${escapeHtml(segment.text)}</i>` : escapeHtml(segment.text)
+      )
+      .join('');
 
-      const uncited = cited ? '' : `<span class="bib-uncited">${UNCITED_NOTE}</span> `;
+    const uncited = cited ? '' : `<span class="bib-uncited">${UNCITED_NOTE}</span> `;
 
-      if (authorDate) {
-        return `<li class="bib-item bib-item--hanging"><span class="bib-text">${uncited}${body}</span></li>`;
-      }
-
-      const marker = number !== undefined && numbered ? `[${number}]` : '';
-
-      return (
-        `<li class="bib-item">` +
-        `<span class="bib-marker">${marker}</span>` +
-        `<span class="bib-text">${uncited}${body}</span>` +
-        '</li>'
-      );
+    if (authorDate) {
+      return `<li class="bib-item bib-item--hanging"><span class="bib-text">${uncited}${body}</span></li>`;
     }
-  );
+
+    const marker = number !== undefined && numbered ? `[${number}]` : '';
+
+    return (
+      `<li class="bib-item">` +
+      `<span class="bib-marker">${marker}</span>` +
+      `<span class="bib-text">${uncited}${body}</span>` +
+      '</li>'
+    );
+  });
 
   return `<ul class="bib-list">${items.join('')}</ul>`;
 }

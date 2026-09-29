@@ -4,6 +4,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { renderBibliographyHtml } from '../../lib/bibliographyHtml';
 import {
+  bibliographyHeading,
   type CitationStyle,
   type DisplayReference,
   isAuthorDateStyle,
@@ -74,8 +75,11 @@ function emptyHtml(style: CitationStyle): string {
   return `<p class="bib-empty">No references yet. Add them from the Refs panel and they will appear here, ${order}.</p>`;
 }
 
-/** The heading text that marks a References section an author typed by hand. */
-const REFERENCES_HEADING = /^\s*references\s*$/i;
+/**
+ * The heading text that marks a reference list an author typed by hand, under
+ * any of the names the styles give it.
+ */
+const REFERENCES_HEADING = /^\s*(references?|works cited|reference list|bibliography)\s*$/i;
 
 /** Position just after an existing References heading, if the document has one. */
 function findReferencesHeading(doc: PMNode): number | null {
@@ -157,9 +161,9 @@ export const Bibliography = Node.create<BibliographyOptions, BibliographyStorage
   },
 
   addProseMirrorPlugins() {
+    // "Reference", singular, over a list of one is APA's rule alone.
     const isSingular = () =>
-      isAuthorDateStyle(this.options.resolveStyle()) &&
-      this.options.resolveReferences().length === 1;
+      this.options.resolveStyle() === 'apa' && this.options.resolveReferences().length === 1;
 
     return [
       new Plugin({
@@ -246,16 +250,18 @@ export const Bibliography = Node.create<BibliographyOptions, BibliographyStorage
               .run();
           }
 
-          // APA starts the reference list on a new page, under a centred bold
-          // "References" — which is its Level 1 heading.
-          if (isAuthorDateStyle(this.options.resolveStyle())) {
+          // APA and MLA start the list on a new page, under a centred heading —
+          // "References" and "Works Cited" — which is a Level 1 heading.
+          // Harvard's "Reference list" follows the text.
+          const style = this.options.resolveStyle();
+          if (isAuthorDateStyle(style)) {
             return chain()
               .insertContentAt(state.doc.content.size, [
-                { type: 'pageBreak' },
+                ...(style === 'harvard' ? [] : [{ type: 'pageBreak' }]),
                 {
                   type: 'heading',
                   attrs: { level: 1 },
-                  content: [{ type: 'text', text: 'References' }],
+                  content: [{ type: 'text', text: bibliographyHeading(style) }],
                 },
                 { type: this.name },
               ])

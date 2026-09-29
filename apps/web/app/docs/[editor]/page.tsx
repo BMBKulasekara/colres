@@ -25,6 +25,7 @@ import { useChatNotifications } from '../../../components/chat/useChatNotificati
 import { ReferencesPanel } from '../../../components/ReferencesPanel';
 import { ResearchPanel } from '../../../components/ResearchPanel';
 import Tiptap from '../../../components/TipTap';
+import type { CitationStyle } from '../../../lib/citationFormat';
 import { Collaborators } from './Collaborators';
 import { Room } from './Room';
 
@@ -162,6 +163,14 @@ function EditorContent({ docs }: EditorContentProps) {
   );
 
   const updateDoc = useMutation(api.documents.updateDocument);
+  const setDocumentCitationStyle = useMutation(api.documents.setCitationStyle);
+
+  /**
+   * The style the document's citations and reference list are set in: the one
+   * chosen in the References panel, else the one its template came with.
+   */
+  const citationStyle: CitationStyle =
+    docs.citationStyle ?? docs.templateSnapshot?.citationStyle ?? 'numeric';
 
   // The bibliography is read here rather than only inside the references
   // panel, because the editor needs it too: a citation can only be numbered
@@ -371,7 +380,10 @@ function EditorContent({ docs }: EditorContentProps) {
                       {researchTab === 'references' && (
                         <ReferencesPanel
                           documentId={docs._id}
-                          citationStyle={docs.templateSnapshot?.citationStyle ?? 'numeric'}
+                          citationStyle={citationStyle}
+                          onCitationStyleChange={(style) =>
+                            void setDocumentCitationStyle({ id: docs._id, citationStyle: style })
+                          }
                           citationOrder={citationOrder}
                           onInsertCitation={
                             editorInstance
@@ -484,7 +496,7 @@ function EditorContent({ docs }: EditorContentProps) {
             classOptions={docs.templateSnapshot?.classOptions}
             documentClass={docs.templateSnapshot?.documentClass}
             references={references}
-            citationStyle={docs.templateSnapshot?.citationStyle ?? 'numeric'}
+            citationStyle={citationStyle}
             onCitationOrderChange={setCitationOrder}
             onUploadImage={uploadFigureImage}
           />

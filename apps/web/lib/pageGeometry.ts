@@ -41,7 +41,7 @@ export interface PageMargins {
  * the column count: a single-column IEEE peer-review manuscript still wants
  * IEEE's Roman section numbering and Times measure.
  */
-export type DocumentStyleId = 'default' | 'ieee' | 'apa';
+export type DocumentStyleId = 'default' | 'ieee' | 'apa' | 'mla';
 
 export interface PageGeometry {
   id: 'a4' | 'letter';
@@ -146,6 +146,25 @@ const APA_PRESET: LayoutPreset = {
   pageNumbers: true,
 };
 
+/**
+ * MLA 9 papers: 1 in. margins on every side, one column, and the author's last
+ * name with the page number 0.5 in. from the top, flush right, on every page.
+ * 12pt Times New Roman is the conventional choice.
+ *
+ * MLA has no LaTeX class of its own — its papers are set with `article` — so
+ * this preset is chosen by the template's `mla` class option instead.
+ */
+const MLA_PRESET: LayoutPreset = {
+  styleId: 'mla',
+  margins: {
+    a4: { top: 1, right: 1, bottom: 1, left: 1 },
+    letter: { top: 1, right: 1, bottom: 1, left: 1 },
+  },
+  columnGapIn: 0,
+  defaultBodyPt: 12,
+  pageNumbers: true,
+};
+
 const DEFAULT_BODY_PT = 11;
 
 export const DEFAULT_PAGE_GEOMETRY = buildGeometry('a4', DEFAULT_BODY_PT, DEFAULT_PRESET, 1);
@@ -205,7 +224,11 @@ function buildGeometry(
  */
 const IEEE_ONE_COLUMN_MODES = new Set(['peerreview', 'peerreviewca', 'draftcls', 'draftclsnofoot']);
 
-function resolvePreset(documentClass?: string | null): LayoutPreset {
+function resolvePreset(
+  documentClass: string | null | undefined,
+  options: readonly string[]
+): LayoutPreset {
+  if (options.includes('mla')) return MLA_PRESET;
   switch (documentClass?.trim().toLowerCase()) {
     case 'ieeetran':
       return IEEE_PRESET;
@@ -237,8 +260,8 @@ export function getPageGeometry(
   classOptions?: readonly string[] | null,
   documentClass?: string | null
 ): PageGeometry {
-  const preset = resolvePreset(documentClass);
   const options = (classOptions ?? []).map((option) => option.toLowerCase());
+  const preset = resolvePreset(documentClass, options);
 
   const id: 'a4' | 'letter' = options.includes('letterpaper') ? 'letter' : 'a4';
 

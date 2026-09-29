@@ -2,12 +2,12 @@ import { Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { labelAuthorDateCitations } from '../../lib/authorDate';
 import {
   type CitationStyle,
   type DisplayReference,
   isAuthorDateStyle,
 } from '../../lib/citationFormat';
+import { labelCitations } from '../../lib/citationLabels';
 import {
   type CitationOccurrence,
   type CitationNumbering as Numbering,
@@ -127,8 +127,8 @@ function buildDecorations(doc: PMNode, options: CitationNumberingOptions) {
   const citations = findCitations(doc);
   const style = options.resolveStyle?.() ?? 'numeric';
   const numbering: Numbering = isAuthorDateStyle(style)
-    ? labelAuthorDateCitations(citations, options.resolveReferences?.() ?? [])
-    : numberCitations(citations, options.resolveKnownKeys());
+    ? labelCitations(citations, options.resolveReferences?.() ?? [], style)
+    : numberCitations(citations, options.resolveKnownKeys(), style);
 
   const decorations: Decoration[] = [];
 
@@ -153,10 +153,17 @@ function buildDecorations(doc: PMNode, options: CitationNumberingOptions) {
       }
     } else {
       attrs['data-citation-label'] = label?.text ?? '[?]';
+      // A label with an italic part cannot be painted by CSS `content`, so
+      // the node view draws it from the segments instead; see `Citation`.
+      if (label?.segments) attrs['data-citation-rich'] = 'true';
     }
     if (label?.unresolved) attrs['data-citation-unresolved'] = 'true';
 
-    decorations.push(Decoration.node(citation.pos, citation.pos + citation.size, attrs));
+    decorations.push(
+      Decoration.node(citation.pos, citation.pos + citation.size, attrs, {
+        citationSegments: label?.hidden ? undefined : label?.segments,
+      })
+    );
   });
 
   return { decorations: DecorationSet.create(doc, decorations), order: numbering.order };

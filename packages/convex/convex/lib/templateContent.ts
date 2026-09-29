@@ -21,7 +21,15 @@ export interface TemplateFieldLike {
     placeholder: string;
     defaultValue?: string;
     help?: string;
+    /** How a `date` field is written out. Month first unless a style asks otherwise. */
+    dateStyle?: DateStyle;
 }
+
+/**
+ * APA writes a date month first, "October 1, 2025"; MLA day first with no
+ * commas, "1 October 2025".
+ */
+export type DateStyle = "month-day-year" | "day-month-year";
 
 export function slugify(input: string): string {
     return input
@@ -50,10 +58,11 @@ export function escapeHtml(input: string): string {
 }
 
 /** Escapes a value for use inside a `{{TOKEN}}` slot, formatted by field type. */
-function renderFieldValue(value: string, type: TemplateFieldType): string {
+function renderFieldValue(value: string, field: TemplateFieldLike): string {
     const trimmed = value.trim();
     if (!trimmed) return "";
 
+    const { type } = field;
     switch (type) {
         case "authors":
         case "keywords": {
@@ -66,7 +75,7 @@ function renderFieldValue(value: string, type: TemplateFieldType): string {
             return type === "authors" ? byline(parts) : parts.join(", ");
         }
         case "date":
-            return escapeHtml(formatDate(trimmed));
+            return escapeHtml(formatDate(trimmed, field.dateStyle));
         case "textarea":
             // Preserve paragraph breaks, since a textarea is multi-line.
             return trimmed
@@ -106,15 +115,19 @@ const MONTHS = [
 
 /**
  * A date picker's "2025-10-01" as "October 1, 2025" — month spelled out, as
- * APA asks for on the title page. Anything else is left exactly as typed, so a
- * date an author wrote in their own country's format is not second-guessed.
+ * APA asks for on the title page — or as "1 October 2025", MLA's heading
+ * order. Anything else is left exactly as typed, so a date an author wrote in
+ * their own country's format is not second-guessed.
  */
-function formatDate(value: string): string {
+export function formatDate(value: string, style: DateStyle = "month-day-year"): string {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
     if (!match) return value;
     const [, year, month, day] = match;
     const name = MONTHS[Number(month) - 1];
-    return name ? `${name} ${Number(day)}, ${year}` : value;
+    if (!name) return value;
+    return style === "day-month-year"
+        ? `${Number(day)} ${name} ${year}`
+        : `${name} ${Number(day)}, ${year}`;
 }
 
 /**
@@ -133,7 +146,7 @@ export function applyFieldValues(
 
     for (const field of fields) {
         const raw = values[field.key] ?? field.defaultValue ?? "";
-        const rendered = renderFieldValue(raw, field.type);
+        const rendered = renderFieldValue(raw, field);
         output = replaceAllLiteral(output, field.placeholder, rendered);
     }
 

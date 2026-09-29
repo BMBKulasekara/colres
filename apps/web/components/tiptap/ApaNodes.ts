@@ -4,8 +4,11 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     runningHead: {
-      /** Adds a running head at the top of the paper, or selects the one there. */
-      insertRunningHead: () => ReturnType;
+      /**
+       * Adds a running head at the top of the paper, or selects the one there.
+       * `placeholder` is the text a new one starts with, selected for typing over.
+       */
+      insertRunningHead: (placeholder?: string) => ReturnType;
     };
   }
 }
@@ -28,6 +31,9 @@ export const RUNNING_HEAD_MAX = 50;
  * repeats it on every later page; print moves it into each page's header.
  * Wherever it is placed in the document, it prints in the header and nowhere
  * else, so there is only ever one.
+ *
+ * An MLA paper uses the same node for its page header, the author's last name,
+ * drawn at the top right beside the page number and never in capitals.
  */
 export const RunningHead = Node.create({
   name: 'runningHead',
@@ -48,7 +54,7 @@ export const RunningHead = Node.create({
   addCommands() {
     return {
       insertRunningHead:
-        () =>
+        (placeholder = 'Shortened Title') =>
         ({ state, chain, commands }) => {
           const existing = findRunningHead(state.doc);
           if (existing) return commands.setTextSelection(existing.pos + 1);
@@ -56,9 +62,9 @@ export const RunningHead = Node.create({
           return chain()
             .insertContentAt(0, {
               type: this.name,
-              content: [{ type: 'text', text: 'Shortened Title' }],
+              content: [{ type: 'text', text: placeholder }],
             })
-            .setTextSelection({ from: 1, to: 1 + 'Shortened Title'.length })
+            .setTextSelection({ from: 1, to: 1 + placeholder.length })
             .run();
         },
     };

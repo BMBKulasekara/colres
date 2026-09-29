@@ -37,6 +37,7 @@ export interface CatalogField {
     placeholder: string;
     defaultValue?: string;
     help?: string;
+    dateStyle?: "month-day-year" | "day-month-year";
 }
 
 export interface CatalogTemplate {
@@ -58,7 +59,7 @@ export interface CatalogTemplate {
     classOptions: { value: string; label: string; isDefault?: boolean; group?: string }[];
     requiredPackages: string[];
     latexSkeleton?: string;
-    citationStyle: "ieee" | "apa" | "acm" | "vancouver" | "chicago" | "numeric";
+    citationStyle: "ieee" | "apa" | "acm" | "vancouver" | "chicago" | "numeric" | "harvard" | "mla";
     license: { spdx: string; url: string; redistributable: boolean; notes?: string };
     featured: boolean;
     order: number;
@@ -683,6 +684,148 @@ const APA_PROFESSIONAL_FIELDS: CatalogField[] = [
     },
     abstractField,
     keywordsField,
+];
+
+/* -------------------------------------------------------------------------- */
+/*  MLA 9 paper skeleton                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * An MLA Style (9th edition) research paper, following the MLA Handbook's
+ * formatting guidance.
+ *
+ * MLA has no title page. The first page opens with a four-line heading, flush
+ * left, then the title centred in plain type, then the text. The editor reads
+ * three conventions from this markup:
+ *
+ *  - The **page header** is the author's last name followed by the page
+ *    number, at the top right of every page. The name is the first block of
+ *    the document (`<p data-running-head>`), the same node an APA running head
+ *    uses; MLA's stylesheet draws it next to the page number instead of at
+ *    the top left in capitals.
+ *  - Paragraphs before the first `<h1>` are the **heading**: name, instructor,
+ *    course, date, each on its own double-spaced line. The first `<h1>` is the
+ *    title, centred and not bold.
+ *  - The **Works Cited** list starts on a new page under a centred, plain
+ *    heading, and is generated from the document's references: alphabetical,
+ *    double-spaced, with a 0.5 in. hanging indent.
+ *
+ * The `mla` class option is what switches the editor and print to this page
+ * layout (see `getPageGeometry`), so it stays with the document even if its
+ * citation style is later changed.
+ */
+function mlaPaper(): string {
+    return [
+        "<p data-running-head>{{SURNAME}}</p>",
+
+        // The heading, flush left on the first page.
+        "<p>{{AUTHORS}}</p>",
+        "<p>{{INSTRUCTOR}}</p>",
+        "<p>{{COURSE}}</p>",
+        "<p>{{DUE_DATE}}</p>",
+        "<h1>{{TITLE}}</h1>",
+        tip(
+            "MLA papers have no title page. Your name, your instructor's name, the course, and the date sit flush left at the top of page one, and the title is centred below them in title case — not bold, italic, underlined, or in quotation marks. Your last name and the page number appear top right on every page."
+        ),
+        "<p>Open with the context your reader needs, and end the introduction with your thesis: the claim the rest of the paper argues.</p>",
+        "<p>Develop each point in its own paragraph. When you quote or paraphrase a source, cite it in the sentence with the author's last name and the page number, for example (Moore 37).</p>",
+
+        "<h2>Section Heading</h2>",
+        tip(
+            "Headings are optional in a short paper. If you use them, keep them in title case and consistent: Level 1 bold and flush left, Level 2 italic and flush left. Do not number them."
+        ),
+        "<p>Continue the argument here.</p>",
+        tip(
+            "Set a quotation longer than four lines of prose as a block quote from the toolbar: it is indented 0.5 in., double-spaced, and has no quotation marks. Put the citation after the final punctuation."
+        ),
+
+        "<h2>Conclusion</h2>",
+        "<p>Draw the argument together and show why it matters, without only restating the thesis.</p>",
+
+        // Works Cited, on a new page.
+        '<div data-page-break=""></div>',
+        "<h1>Works Cited</h1>",
+        '<div data-bibliography="true"></div>',
+        tip(
+            'Insert citations from the Refs panel. They appear in the text as (Author Page) — (Moore 37), (Moore and Patel 48–50), (Moore et al. 59) — and are listed here alphabetically by author, double-spaced, with a hanging indent. A work with no author is cited and listed by its title.'
+        ),
+    ].join("");
+}
+
+const MLA_SECTIONS: CatalogSection[] = [
+    {
+        key: "heading",
+        title: "Heading and Title",
+        required: true,
+        guidance:
+            "Name, instructor, course, and date flush left on page one, then the title centred in plain type. No title page.",
+    },
+    {
+        key: "introduction",
+        title: "Introduction",
+        required: true,
+        targetWords: 250,
+        guidance: "Ends with the thesis statement. No heading.",
+    },
+    {
+        key: "body",
+        title: "Body",
+        required: true,
+        targetWords: 1500,
+        guidance: "One point per paragraph, each supported by cited evidence.",
+    },
+    { key: "conclusion", title: "Conclusion", required: true, targetWords: 250 },
+    {
+        key: "works-cited",
+        title: "Works Cited",
+        required: true,
+        guidance:
+            "Starts on a new page. Centred heading, alphabetical by author, double-spaced, 0.5 in. hanging indent.",
+    },
+];
+
+const MLA_FIELDS: CatalogField[] = [
+    {
+        key: "authors",
+        label: "Your name",
+        type: "authors",
+        required: false,
+        placeholder: "{{AUTHORS}}",
+        help: "Your full name as it should appear on the first line of the heading, for example: Jordan Moore.",
+    },
+    {
+        key: "surname",
+        label: "Last name for the page header",
+        type: "text",
+        required: false,
+        placeholder: "{{SURNAME}}",
+        help: "Printed before the page number at the top right of every page, for example: Moore.",
+    },
+    {
+        key: "instructor",
+        label: "Instructor",
+        type: "text",
+        required: false,
+        placeholder: "{{INSTRUCTOR}}",
+        help: "With the instructor's preferred title, for example: Professor Alvarez",
+    },
+    {
+        key: "course",
+        label: "Course",
+        type: "text",
+        required: false,
+        placeholder: "{{COURSE}}",
+        help: "Course name or number, for example: English 101",
+    },
+    {
+        key: "dueDate",
+        label: "Date",
+        type: "date",
+        required: false,
+        placeholder: "{{DUE_DATE}}",
+        help: "Written day first with the month in full, e.g., 5 March 2024.",
+        dateStyle: "day-month-year",
+    },
 ];
 
 /* -------------------------------------------------------------------------- */
@@ -1411,6 +1554,40 @@ const TEMPLATES: CatalogTemplate[] = [
         },
         featured: true,
         order: 13,
+    },
+    {
+        slug: "mla-paper",
+        name: "MLA Paper (9th ed.)",
+        category: "assignments",
+        description:
+            "MLA Style research paper: first-page heading instead of a title page, last name and page number top right, double-spaced text with 0.5 in. indents, (Author Page) citations, and an alphabetical Works Cited list with hanging indents.",
+        tags: ["mla", "mla-9", "student", "humanities", "english", "essay", "works-cited"],
+        official: false,
+        content: mlaPaper(),
+        sections: MLA_SECTIONS,
+        fields: MLA_FIELDS,
+        engine: "pdflatex",
+        // biblatex-mla, which implements the MLA reference rules, needs biber.
+        bibTool: "biber",
+        passes: 3,
+        entryFile: "main.tex",
+        documentClass: "article",
+        classOptions: [
+            { value: "mla", label: "MLA page layout", isDefault: true, group: "format" },
+            { value: "letterpaper", label: "US Letter", isDefault: true, group: "paper" },
+            { value: "a4paper", label: "A4 paper", group: "paper" },
+            { value: "12pt", label: "12pt body text", isDefault: true, group: "size" },
+        ],
+        requiredPackages: ["geometry", "setspace", "fancyhdr", "biblatex", "csquotes", "babel"],
+        citationStyle: "mla",
+        license: {
+            spdx: "LPPL-1.3c",
+            url: "https://www.latex-project.org/lppl/",
+            redistributable: true,
+            notes: "Standard article class; the MLA layout is set with geometry, setspace and fancyhdr, and references with the biblatex-mla style. Guidance text is written for this app from MLA's public style rules.",
+        },
+        featured: true,
+        order: 14,
     },
 ];
 

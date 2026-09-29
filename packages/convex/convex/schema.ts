@@ -27,7 +27,9 @@ export const citationStyleValidator = v.union(
   v.literal("acm"),
   v.literal("vancouver"),
   v.literal("chicago"),
-  v.literal("numeric")
+  v.literal("numeric"),
+  v.literal("harvard"),
+  v.literal("mla")
 );
 
 /** Mirrors the Overleaf gallery taxonomy so the categories are familiar. */
@@ -45,6 +47,21 @@ export const templateCategoryValidator = v.union(
   v.literal("calendars")
 );
 
+/**
+ * Roles an admin can assign. `users.role` itself stays a plain string in the
+ * table so existing rows never fail validation, but every write path that
+ * changes a role goes through this union.
+ */
+export const roleValidator = v.union(v.literal("admin"), v.literal("user"));
+
+export const auditEntityTypeValidator = v.union(
+  v.literal("document"),
+  v.literal("template"),
+  v.literal("user"),
+  v.literal("organization"),
+  v.literal("catalog")
+);
+
 export default defineSchema({
   users: defineTable({
     clerkId: v.string(),
@@ -54,7 +71,11 @@ export default defineSchema({
     role: v.string(),
     createdAt: v.number(),
     orgIds: v.optional(v.array(v.string())),
-  }).index("by_clerk_id", ["clerkId"]),
+  })
+    .index("by_clerk_id", ["clerkId"])
+    .index("by_role", ["role"])
+    .index("by_created", ["createdAt"])
+    .searchIndex("search_name", { searchField: "name", filterFields: ["role"] }),
 
 
   documents: defineTable({
@@ -65,6 +86,12 @@ export default defineSchema({
     status: v.boolean(),
     content: v.string(),
     description: v.optional(v.string()),
+    /**
+     * The citation style the author chose for this document, overriding the
+     * one its template came with. Switching it changes both the in-text
+     * citations and the reference list; the template snapshot is untouched.
+     */
+    citationStyle: v.optional(citationStyleValidator),
     createdAt: v.number(),
     updatedAt: v.number(),
 
@@ -88,7 +115,14 @@ export default defineSchema({
   })
     .index("by_author", ["author"])
     .index("by_org_id", ["orgId"])
-    .index("by_slug", ["slug"]),
+    .index("by_slug", ["slug"])
+    .index("by_created", ["createdAt"])
+    .index("by_updated", ["updatedAt"])
+    .index("by_status_updated", ["status", "updatedAt"])
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["status", "orgId", "author", "templateId"],
+    }),
 
 
   organizations: defineTable({
@@ -101,7 +135,31 @@ export default defineSchema({
     members: v.array(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_clerk_org_id", ["clerkOrgId"]),
+  })
+    .index("by_clerk_org_id", ["clerkOrgId"])
+    .index("by_created", ["createdAt"])
+    .searchIndex("search_name", { searchField: "name" }),
+
+  /**
+   * Who did what in the admin console.
+   *
+   * `entityLabel` is a snapshot of the entity's name at the time, so an entry
+   * about a deleted document still reads as something rather than an orphaned
+   * id.
+   */
+  auditLog: defineTable({
+    actorId: v.id("users"),
+    action: v.string(),
+    entityType: auditEntityTypeValidator,
+    entityId: v.optional(v.string()),
+    entityLabel: v.string(),
+    meta: v.optional(v.any()),
+    createdAt: v.number(),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_entity", ["entityType", "entityId", "createdAt"])
+    .index("by_entity_type", ["entityType", "createdAt"])
+    .index("by_actor", ["actorId", "createdAt"]),
 
   chats: defineTable({
     documentId: v.id("documents"),
@@ -273,6 +331,8 @@ export default defineSchema({
         placeholder: v.string(),
         defaultValue: v.optional(v.string()),
         help: v.optional(v.string()),
+        /** A `date` field's order: APA's "October 1, 2025" or MLA's "1 October 2025". */
+        dateStyle: v.optional(v.union(v.literal("month-day-year"), v.literal("day-month-year"))),
       })
     ),
 
@@ -374,12 +434,19 @@ export default defineSchema({
     edition: v.optional(v.string()),
     /** Editors of the book a chapter or paper appears in, in credited order. */
     editors: v.optional(v.array(v.string())),
+    /**
+     * The abbreviation a group author goes by in the text, e.g. "NIMH". APA
+     * defines it at the first citation and uses it alone afterwards; the
+     * reference list always spells the name out.
+     */
+    authorAbbreviation: v.optional(v.string()),
     abstract: v.optional(v.string()),
     source: v.union(
       v.literal("openalex"),
       v.literal("doi"),
       v.literal("manual"),
-      v.literal("bibtex")
+      v.literal("bibtex"),
+      v.literal("pdf")
     ),
     /** OpenAlex work id, so a saved suggestion is not added twice. */
     externalId: v.optional(v.string()),
