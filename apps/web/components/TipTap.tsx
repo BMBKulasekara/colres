@@ -54,6 +54,7 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import { type CitationStyle, isAuthorDateStyle } from '../lib/citationFormat';
 import type { FloatScheme } from '../lib/floatNumbering';
 import { getPageGeometry, PAGE_GAP_PX } from '../lib/pageGeometry';
+import { useContributionTracker } from '../lib/useContributionTracker';
 import { ApaRoles, findRunningHead, RUNNING_HEAD_MAX, RunningHead } from './tiptap/ApaNodes';
 import { Bibliography, hasBibliography, refreshBibliography } from './tiptap/BibliographyNode';
 import { Citation } from './tiptap/CitationExtension';
@@ -492,6 +493,7 @@ export default function TipTapEditor({
 
   const { threads } = useThreads({ query: { resolved: false } });
   const room = useRoom();
+  useContributionTracker(editor, room.id);
   const syncConvexComments = useConvexMutation(api.comments.syncComments);
 
   useEffect(() => {

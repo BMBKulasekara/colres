@@ -470,4 +470,31 @@ export default defineSchema({
   }).index("by_document_id", ["documentId"])
     .index("by_thread_id", ["threadId"]),
 
+  /**
+   * Per-member contribution to a document, rolled up by UTC day.
+   *
+   * Editor activity is buffered in the browser and flushed about once a
+   * minute, and server-side events (references, comments, chat) bump the same
+   * row, so a busy document costs one small upsert per member per minute
+   * rather than one row per keystroke. Only one user ever writes a given row,
+   * which keeps concurrent writers from conflicting.
+   */
+  contributionStats: defineTable({
+    documentId: v.id("documents"),
+    userId: v.id("users"),
+    /** UTC day, "YYYY-MM-DD". */
+    day: v.string(),
+    wordsAdded: v.number(),
+    charsAdded: v.number(),
+    charsDeleted: v.number(),
+    activeMinutes: v.number(),
+    references: v.number(),
+    comments: v.number(),
+    messages: v.number(),
+    lastActiveAt: v.number(),
+  })
+    .index("by_document_and_day", ["documentId", "day"])
+    .index("by_document_user_day", ["documentId", "userId", "day"])
+    .index("by_user_and_day", ["userId", "day"]),
+
 });
