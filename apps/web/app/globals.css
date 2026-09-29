@@ -416,6 +416,11 @@ body {
   content: attr(data-citation-label);
 }
 
+/* A label with an italic part is drawn by the node view as real spans. */
+.citation-mark[data-citation-rich]::after {
+  content: none;
+}
+
 /* Second and later markers of one bracket group: the leader drew them all. */
 .citation-mark[data-citation-hidden] {
   display: none;

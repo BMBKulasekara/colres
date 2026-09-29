@@ -16,7 +16,12 @@
  */
 
 import { sortAuthorDate } from './authorDate.ts';
-import { type CitationStyle, type DisplayReference, isAuthorDateStyle } from './citationFormat.ts';
+import {
+  type CitationStyle,
+  type DisplayReference,
+  isAuthorDateStyle,
+  type ReferenceSegment,
+} from './citationFormat.ts';
 
 /** One citation as it appears in the document, in document order. */
 export interface CitationOccurrence {
@@ -49,6 +54,12 @@ export interface CitationLabel {
   hidden: boolean;
   /** No reference in the bibliography has this key. */
   unresolved: boolean;
+  /**
+   * The same label split into styled runs, present only when part of it is
+   * italic — an authorless book cited by its title, "(*Big Book*, 2020)".
+   * `text` is always the plain equivalent.
+   */
+  segments?: ReferenceSegment[];
 }
 
 export interface CitationNumbering {

@@ -61,6 +61,7 @@ export const addReference = mutation({
         accessed: v.optional(v.number()),
         edition: v.optional(v.string()),
         editors: v.optional(v.array(v.string())),
+        authorAbbreviation: v.optional(v.string()),
         abstract: v.optional(v.string()),
         source: v.optional(sourceValidator),
         externalId: v.optional(v.string()),
@@ -111,6 +112,7 @@ export const addReference = mutation({
             accessed: args.accessed,
             edition: args.edition,
             editors: args.editors?.length ? args.editors : undefined,
+            authorAbbreviation: args.authorAbbreviation?.trim() || undefined,
             abstract: args.abstract,
             source: args.source ?? "manual",
             externalId: args.externalId,
@@ -141,6 +143,7 @@ export const updateReference = mutation({
         accessed: v.optional(v.number()),
         edition: v.optional(v.string()),
         editors: v.optional(v.array(v.string())),
+        authorAbbreviation: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const { id, ...updates } = args;

@@ -457,3 +457,162 @@ test('ieee: a book edition follows the title', () => {
     'J. P. Hailman, Coding and Redundancy, 3rd ed. Cambridge, MA, USA: Harvard Univ. Press, 2008.'
   );
 });
+
+/*
+ * APA 7 entries from the worked examples on the APA Style website, as
+ * collected in the project's APA Style Guide.
+ */
+
+test('apa: journal article with five authors, issue, pages and DOI (Grady et al., 2019)', () => {
+  assert.equal(
+    apa({
+      type: 'article',
+      authors: [
+        'Jessica S. Grady',
+        'Malena Her',
+        'Geena Moreno',
+        'Catherine Perez',
+        'Jelinne Yelinek',
+      ],
+      title:
+        'Emotions in storybooks: A comparison of storybooks that represent ethnic and racial groups in the {United States}',
+      venue: 'Psychology of Popular Media Culture',
+      volume: '8',
+      number: '3',
+      pages: '207-217',
+      doi: 'https://doi.org/10.1037/ppm0000185',
+      year: 2019,
+    }),
+    'Grady, J. S., Her, M., Moreno, G., Perez, C., & Yelinek, J. (2019). Emotions in storybooks: A comparison of storybooks that represent ethnic and racial groups in the United States. Psychology of Popular Media Culture, 8(3), 207–217. https://doi.org/10.1037/ppm0000185'
+  );
+});
+
+test('apa: older DOI forms are rewritten as https://doi.org/', () => {
+  for (const doi of [
+    'doi:10.1037/cfp0000121',
+    'http://dx.doi.org/10.1037/cfp0000121',
+    'http://doi.org/10.1037/cfp0000121',
+  ]) {
+    assert.match(
+      apa({ type: 'article', authors: ['Ada Lovelace'], title: 'T', venue: 'J', year: 2019, doi }),
+      / https:\/\/doi\.org\/10\.1037\/cfp0000121$/
+    );
+  }
+});
+
+test('apa: a group author is spelled out, and a publisher of the same name is dropped', () => {
+  assert.equal(
+    apa({
+      type: 'book',
+      authors: ['{American Psychiatric Association}'],
+      title: 'Diagnostic and statistical manual of mental disorders',
+      edition: '5',
+      publisher: 'American Psychiatric Association',
+      year: 2013,
+    }),
+    'American Psychiatric Association. (2013). Diagnostic and statistical manual of mental disorders (5th ed.).'
+  );
+  // A web page whose site is its author: the site name is left out.
+  assert.equal(
+    apa({
+      type: 'misc',
+      authors: ['{World Health Organization}'],
+      title: 'The top 10 causes of death',
+      venue: 'World Health Organization',
+      url: 'https://www.who.int/news-room/fact-sheets/detail/the-top-10-causes-of-death',
+      year: 2018,
+      month: 5,
+    }),
+    'World Health Organization. (2018, May). The top 10 causes of death. https://www.who.int/news-room/fact-sheets/detail/the-top-10-causes-of-death'
+  );
+});
+
+test('apa: a report by an agency names its parent agency as publisher', () => {
+  assert.equal(
+    apa({
+      type: 'techreport',
+      authors: ['{National Cancer Institute}'],
+      title: 'Taking time: Support for people with cancer',
+      publisher: 'U.S. Department of Health and Human Services, National Institutes of Health',
+      url: 'https://www.cancer.gov/publications/patient-education/takingtime.pdf',
+      year: 2019,
+    }),
+    'National Cancer Institute. (2019). Taking time: Support for people with cancer. U.S. Department of Health and Human Services, National Institutes of Health. https://www.cancer.gov/publications/patient-education/takingtime.pdf'
+  );
+});
+
+test('apa: an undated web page gives the date it was retrieved', () => {
+  assert.equal(
+    apa({
+      type: 'misc',
+      authors: ['{U.S. Census Bureau}'],
+      title: 'U.S. and world population clock',
+      venue: 'U.S. Department of Commerce',
+      url: 'https://www.census.gov/popclock/',
+      accessed: Date.parse('2020-01-09'),
+    }),
+    'U.S. Census Bureau. (n.d.). U.S. and world population clock. U.S. Department of Commerce. Retrieved January 9, 2020, from https://www.census.gov/popclock/'
+  );
+});
+
+test('apa: a hyphenated given name keeps its hyphen in the initials', () => {
+  assert.match(
+    apa({ type: 'book', authors: ['Eva-Maria Paradis'], title: 'Notes', year: 2019 }),
+    /^Paradis, E\.-M\. \(2019\)/
+  );
+});
+
+test('apa: a name suffix follows the initials after a comma (Evans et al., 2019)', () => {
+  assert.equal(
+    apa({
+      type: 'misc',
+      authors: [
+        'Arthur C. Evans Jr.',
+        'James Garbarino',
+        'Erika Bocanegra',
+        'Robert T. Kinscherff',
+        'Nelba Márquez-Greene',
+      ],
+      title: 'Gun violence: An event on the power of community',
+      year: 2019,
+    }),
+    'Evans, A. C., Jr., Garbarino, J., Bocanegra, E., Kinscherff, R. T., & Márquez-Greene, N. (2019). Gun violence: An event on the power of community.'
+  );
+  for (const author of ['Evans, Arthur C., Jr.', 'Evans Jr., Arthur C.', 'Arthur C. Evans, Jr.']) {
+    assert.match(
+      apa({ type: 'book', authors: [author], title: 'T', year: 2019 }),
+      /^Evans, A\. C\., Jr\. \(2019\)/
+    );
+  }
+  assert.match(
+    apa({ type: 'book', authors: ['Henry Ford III'], title: 'T', year: 2019 }),
+    /^Ford, H\., III\. \(2019\)/
+  );
+});
+
+test('apa: the abbreviation never appears in the reference list', () => {
+  assert.match(
+    formatReferenceText(
+      {
+        citationKey: 'k',
+        type: 'misc',
+        authors: ['{National Institute of Mental Health}'],
+        authorAbbreviation: 'NIMH',
+        title: 'Anxiety disorders',
+        year: 2018,
+      },
+      'apa'
+    ),
+    /^National Institute of Mental Health\. \(2018\)\. Anxiety disorders\.$/
+  );
+});
+
+test('ieee: a name suffix is set off with a comma', () => {
+  assert.match(
+    formatReferenceText(
+      { citationKey: 'k', type: 'book', authors: ['Arthur C. Evans Jr.'], title: 'T', year: 2019 },
+      'ieee'
+    ),
+    /^A\. C\. Evans, Jr\., /
+  );
+});

@@ -153,10 +153,17 @@ function buildDecorations(doc: PMNode, options: CitationNumberingOptions) {
       }
     } else {
       attrs['data-citation-label'] = label?.text ?? '[?]';
+      // A label with an italic part cannot be painted by CSS `content`, so
+      // the node view draws it from the segments instead; see `Citation`.
+      if (label?.segments) attrs['data-citation-rich'] = 'true';
     }
     if (label?.unresolved) attrs['data-citation-unresolved'] = 'true';
 
-    decorations.push(Decoration.node(citation.pos, citation.pos + citation.size, attrs));
+    decorations.push(
+      Decoration.node(citation.pos, citation.pos + citation.size, attrs, {
+        citationSegments: label?.hidden ? undefined : label?.segments,
+      })
+    );
   });
 
   return { decorations: DecorationSet.create(doc, decorations), order: numbering.order };

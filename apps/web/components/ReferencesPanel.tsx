@@ -73,6 +73,7 @@ interface ManualEntry {
   accessed: string;
   edition: string;
   editors: string;
+  authorAbbreviation: string;
 }
 
 const EMPTY_MANUAL: ManualEntry = {
@@ -92,6 +93,7 @@ const EMPTY_MANUAL: ManualEntry = {
   accessed: '',
   edition: '',
   editors: '',
+  authorAbbreviation: '',
 };
 
 /**
@@ -154,6 +156,7 @@ const MANUAL_LABELS: Record<keyof ManualEntry, string> = {
   accessed: 'Date accessed',
   edition: 'Edition, e.g. 5 or Rev.',
   editors: 'Editors, comma separated',
+  authorAbbreviation: 'Group author abbreviation, e.g. NIMH (optional)',
 };
 
 const TYPE_LABELS: Record<ReferenceType, string> = {
@@ -320,6 +323,8 @@ export function ReferencesPanel({
           .map((name) => name.trim())
           .filter(Boolean),
         accessed: accessed !== undefined && !Number.isNaN(accessed) ? accessed : undefined,
+        // Only an author–date style uses it, and only for a braced group author.
+        authorAbbreviation: authorDate ? manual.authorAbbreviation.trim() || undefined : undefined,
         source: 'manual',
       });
       setManual({ ...EMPTY_MANUAL });
@@ -457,7 +462,9 @@ export function ReferencesPanel({
             {authorDate && (
               <p className="text-[10px] leading-snug text-muted-foreground">
                 APA prints titles in sentence case. Wrap a name in braces, e.g. {'{Freud}'}, to keep
-                its capital.
+                its capital. Enter a group author in braces too, e.g.{' '}
+                {'{American Psychological Association}'}, so it is spelled out in full. A suffix
+                goes after the name: Alexander C. Evans Jr.
               </p>
             )}
             <Input
@@ -466,6 +473,16 @@ export function ReferencesPanel({
               placeholder={MANUAL_LABELS.authors}
               className="h-8 text-xs"
             />
+            {/* APA defines a group author's abbreviation at its first citation
+                and uses it after that, so it is only asked for a group author. */}
+            {authorDate && /^\s*\{[^{}]+\}\s*$/.test(manual.authors) && (
+              <Input
+                value={manual.authorAbbreviation}
+                onChange={(e) => setManual({ ...manual, authorAbbreviation: e.target.value })}
+                placeholder={MANUAL_LABELS.authorAbbreviation}
+                className="h-8 text-xs"
+              />
+            )}
 
             <div className="flex gap-2">
               <Input

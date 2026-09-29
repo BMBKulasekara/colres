@@ -14,7 +14,18 @@
  * Kept free of ProseMirror and the DOM so the rules can be exercised in Node.
  */
 
-import { type DisplayReference, initials, stripBraces, surname } from './citationFormat.ts';
+import {
+  type DisplayReference,
+  initials,
+  isGroupAuthor,
+  italic,
+  joinSegments,
+  type ReferenceSegment,
+  stripBraces,
+  surname,
+  toTitleCase,
+  upright,
+} from './citationFormat.ts';
 import type { CitationLabel, CitationNumbering, CitationOccurrence } from './citationNumbering.ts';
 
 /** Case- and accent-insensitive, the way APA alphabetises letter by letter. */
@@ -116,27 +127,175 @@ function suffixLetter(index: number): string {
 const QUOTED_TITLE_TYPES = new Set(['article', 'inproceedings', 'incollection']);
 
 /**
+ * How one reference's authors must be written in the text so that it cannot
+ * be mistaken for another reference in the same list. See `nameForms`.
+ */
+export interface NameForm {
+  /** Prefix the first author's initials: "(J. M. Taylor, 2020)". */
+  withInitials?: boolean;
+  /**
+   * How many surnames to write before "et al." for a work of three or more
+   * authors. Absent means the usual one; equal to the number of authors means
+   * every name is written out.
+   */
+  shown?: number;
+}
+
+const lower = (value: string) => value.toLowerCase();
+
+/**
+ * Works out, for the whole list, which citations need more than the usual
+ * short form to stay unambiguous. APA 7 has two such rules:
+ *
+ *  - First authors who share a surname but not initials are cited with their
+ *    initials every time: (J. M. Taylor & Neville, 2020; A. Taylor, 2018).
+ *  - Works of three or more authors from the same year that would shorten to
+ *    the same "et al." form write out as many surnames as it takes to tell
+ *    them apart: Kapoor, Bloom, Montez, et al. (2017) and Kapoor, Bloom,
+ *    Zucker, et al. (2017). "Et al." is plural, so it never stands for a single
+ *    name — when only the last author differs, every name is written out.
+ *
+ * Works with identical authors and year are not handled here; the "a"/"b"
+ * letters of `yearSuffixes` tell those apart.
+ */
+export function nameForms(references: readonly DisplayReference[]): Map<string, NameForm> {
+  const forms = new Map<string, NameForm>();
+  const form = (key: string) => {
+    const existing = forms.get(key);
+    if (existing) return existing;
+    const created: NameForm = {};
+    forms.set(key, created);
+    return created;
+  };
+
+  // Same first-author surname, different initials.
+  const bySurname = new Map<string, DisplayReference[]>();
+  for (const reference of references) {
+    const first = reference.authors[0];
+    if (!first || isGroupAuthor(first)) continue;
+    const key = lower(surname(first));
+    bySurname.set(key, [...(bySurname.get(key) ?? []), reference]);
+  }
+  for (const group of bySurname.values()) {
+    const distinct = new Set(
+      group.map((reference) => lower(initials(reference.authors[0] as string)))
+    );
+    if (distinct.size < 2) continue;
+    for (const reference of group) {
+      if (initials(reference.authors[0] as string)) form(reference.citationKey).withInitials = true;
+    }
+  }
+
+  // Three or more authors that shorten to the same "Surname et al. (year)".
+  const byShortForm = new Map<string, DisplayReference[]>();
+  for (const reference of references) {
+    if (reference.authors.length < 3) continue;
+    const key = `${lower(surname(reference.authors[0] as string))}\u0000${reference.year ?? 'nd'}`;
+    byShortForm.set(key, [...(byShortForm.get(key) ?? []), reference]);
+  }
+  for (const group of byShortForm.values()) {
+    if (group.length < 2) continue;
+    const surnames = group.map((reference) => reference.authors.map((a) => lower(surname(a))));
+
+    group.forEach((reference, index) => {
+      const own = surnames[index] as string[];
+      const differsAt = (n: number) =>
+        surnames.every(
+          (other, j) =>
+            j === index || other.slice(0, n).join('\u0000') !== own.slice(0, n).join('\u0000')
+        );
+
+      let n = 2;
+      while (n <= own.length && !differsAt(n)) n += 1;
+      if (n > own.length) return; // Same authors throughout: a year suffix case.
+
+      // "et al." must stand for at least two names.
+      form(reference.citationKey).shown = own.length - n < 2 ? own.length : n;
+    });
+  }
+
+  return forms;
+}
+
+/** A surname, with its initials in front when `nameForms` asks for them. */
+function citedName(author: string, withInitials: boolean): string {
+  const i = withInitials ? initials(author) : '';
+  return i ? `${i} ${surname(author)}` : surname(author);
+}
+
+/**
  * How the text names a source, APA 7:
  *
  *  - one author: "Smith"
  *  - two authors: "Smith & Jones" inside parentheses, "Smith and Jones" when
  *    the names are part of the sentence (a narrative citation), every time
  *  - three or more: "Smith et al.", from the very first citation
- *  - no author: the title, quoted when it is part of a larger work. In the
- *    text it keeps its title-case capitals, unlike in the reference list.
+ *  - a group author: its full name, "American Psychological Association"
+ *    (the abbreviation, when it has one, is applied by the caller — see
+ *    `labelAuthorDateCitations`)
+ *  - no author: the title in title case, in quotation marks when it is part of
+ *    a larger work — ("Oil Painting," 2019) for an entry listed as "Oil
+ *    painting". A work that stands alone is italic; see `italicName`.
+ *
+ * Suffixes such as "Jr." are never part of the name in the text.
+ * `form` carries the list-wide adjustments from `nameForms`.
  */
-export function inTextName(reference: DisplayReference, narrative = false): string {
+export function inTextName(
+  reference: DisplayReference,
+  narrative = false,
+  form: NameForm = {}
+): string {
   const { authors } = reference;
   if (authors.length === 0) {
-    const title = stripBraces(reference.title).trim();
+    const title = toTitleCase(reference.title.trim());
     return QUOTED_TITLE_TYPES.has(reference.type ?? 'misc') ? `"${title}"` : title;
   }
-  if (authors.length === 1) return surname(authors[0] as string);
-  if (authors.length === 2) {
-    const joiner = narrative ? 'and' : '&';
-    return `${surname(authors[0] as string)} ${joiner} ${surname(authors[1] as string)}`;
+
+  const joiner = narrative ? 'and' : '&';
+  const names = authors.map((author, index) =>
+    citedName(author, index === 0 && Boolean(form.withInitials))
+  );
+
+  if (names.length === 1) return names[0] as string;
+  if (names.length === 2) return `${names[0]} ${joiner} ${names[1]}`;
+
+  const shown = form.shown ?? 1;
+  if (shown >= names.length) {
+    return `${names.slice(0, -1).join(', ')}, ${joiner} ${names[names.length - 1]}`;
   }
-  return `${surname(authors[0] as string)} et al.`;
+  if (shown > 1) return `${names.slice(0, shown).join(', ')}, et al.`;
+  return `${names[0]} et al.`;
+}
+
+/**
+ * True when the text names a source by an italic title: an authorless work
+ * that stands alone, such as a book, report or web page — (*Design for
+ * Eternity*, 2015). A part of a larger work is quoted instead.
+ */
+export function italicName(reference: DisplayReference): boolean {
+  return reference.authors.length === 0 && !QUOTED_TITLE_TYPES.has(reference.type ?? 'misc');
+}
+
+/**
+ * The group author a reference's abbreviation stands for, or undefined when
+ * the abbreviation does not apply: only a sole group author is abbreviated.
+ */
+function abbreviatedGroup(reference: DisplayReference): string | undefined {
+  const abbreviation = reference.authorAbbreviation?.trim();
+  const author = reference.authors[0];
+  if (!abbreviation || reference.authors.length !== 1 || !author || !isGroupAuthor(author)) {
+    return undefined;
+  }
+  return lower(surname(author));
+}
+
+/**
+ * The name followed by the comma that separates it from the year. A quoted
+ * title takes the comma inside its closing quotation mark, as American
+ * punctuation does: ("Oil Painting," 2019).
+ */
+function withComma(name: string): string {
+  return name.endsWith('"') ? `${name.slice(0, -1)},"` : `${name},`;
 }
 
 /** "2020", "2020a", "n.d.", or "n.d.-a". */
@@ -149,20 +308,23 @@ export function inTextYear(reference: DisplayReference, suffix = ''): string {
 interface GroupEntry {
   reference: DisplayReference;
   name: string;
+  /** The name is an italic title. */
+  italic: boolean;
   year: string;
   locator?: string;
 }
 
 /**
- * Writes one parenthetical from the sources it cites.
+ * Writes one parenthetical from the sources it cites, as segments so that an
+ * italic title can stay italic.
  *
  * Sources are listed in reference-list order, separated by semicolons. Works
  * by the same authors are collapsed onto one name — "(Smith, 2019, 2020)" —
  * unless a page number would then be ambiguous about which work it belongs to.
  */
-function formatParenthetical(entries: GroupEntry[]): string {
+function formatParenthetical(entries: GroupEntry[]): ReferenceSegment[] {
   const sorted = [...entries].sort((a, b) => compareAuthorDate(a.reference, b.reference));
-  const parts: string[] = [];
+  const parts: ReferenceSegment[][] = [];
   let previous: GroupEntry | null = null;
 
   for (const entry of sorted) {
@@ -170,14 +332,23 @@ function formatParenthetical(entries: GroupEntry[]): string {
       previous !== null && previous.name === entry.name && !previous.locator && !entry.locator;
 
     if (canMerge) {
-      parts[parts.length - 1] += `, ${entry.year}`;
+      parts[parts.length - 1]?.push(upright(`, ${entry.year}`));
     } else {
-      parts.push(`${entry.name}, ${entry.year}${entry.locator ? `, ${entry.locator}` : ''}`);
+      const rest = ` ${entry.year}${entry.locator ? `, ${entry.locator}` : ''}`;
+      parts.push(
+        entry.italic
+          ? [italic(entry.name), upright(`,${rest}`)]
+          : [upright(`${withComma(entry.name)}${rest}`)]
+      );
     }
     previous = entry;
   }
 
-  return `(${parts.join('; ')})`;
+  return joinSegments([
+    upright('('),
+    ...parts.flatMap((part, i) => (i === 0 ? part : [upright('; '), ...part])),
+    upright(')'),
+  ]);
 }
 
 /**
@@ -193,6 +364,11 @@ function formatParenthetical(entries: GroupEntry[]): string {
  * writes each source's page inside the shared parentheses:
  * "(Smith, 2020, p. 4; Jones, 2019)".
  *
+ * A group author with an abbreviation is introduced once, at its first
+ * citation in the document — "(National Institute of Mental Health [NIMH],
+ * 2020)" or "National Institute of Mental Health (NIMH, 2020)" — and every
+ * later citation uses the abbreviation alone: "(NIMH, 2020)", "NIMH (2020)".
+ *
  * `order` is first-appearance order, as for numbered styles. Nothing is
  * numbered, but the reference list still needs to know which sources the text
  * actually cites.
@@ -203,6 +379,9 @@ export function labelAuthorDateCitations(
 ): CitationNumbering {
   const byKey = new Map(references.map((reference) => [reference.citationKey, reference]));
   const suffixes = yearSuffixes(references);
+  const forms = nameForms(references);
+  /** Group authors whose abbreviation the text has already defined. */
+  const introduced = new Set<string>();
 
   const order: string[] = [];
   const seen = new Set<string>();
@@ -235,6 +414,8 @@ export function labelAuthorDateCitations(
     const narrative = group.length === 1 && group[0]?.narrative === true;
     const entries: GroupEntry[] = [];
     const cited = new Set<string>();
+    /** Abbreviations defined by this citation, recorded once it is written. */
+    const defining = new Set<string>();
 
     for (const occurrence of group) {
       const reference = byKey.get(occurrence.citationKey);
@@ -245,25 +426,51 @@ export function labelAuthorDateCitations(
       if (cited.has(identity)) continue;
       cited.add(identity);
 
+      let name = inTextName(reference, narrative, forms.get(reference.citationKey));
+      const abbreviation = reference.authorAbbreviation?.trim();
+      const groupAuthor = abbreviatedGroup(reference);
+      if (groupAuthor && abbreviation) {
+        if (introduced.has(groupAuthor)) {
+          name = abbreviation;
+        } else {
+          // Every work by the group in this citation shares the definition,
+          // so "(… [NIMH], 2019, 2020)" still collapses onto one name.
+          defining.add(groupAuthor);
+          if (!narrative) name = `${name} [${abbreviation}]`;
+        }
+      }
+
       entries.push({
         reference,
-        name: inTextName(reference, narrative),
+        name,
+        italic: italicName(reference),
         year: inTextYear(reference, suffixes.get(reference.citationKey)),
         locator: occurrence.locator,
       });
     }
+    for (const groupAuthor of defining) introduced.add(groupAuthor);
 
     const leader = labels[index] as CitationLabel;
+    let segments: ReferenceSegment[];
     if (entries.length === 0) {
-      leader.text = '(?)';
+      segments = [upright('(?)')];
       leader.unresolved = true;
     } else if (narrative) {
       const entry = entries[0] as GroupEntry;
-      leader.text = `${entry.name} (${entry.year}${entry.locator ? `, ${entry.locator}` : ''})`;
+      const locator = entry.locator ? `, ${entry.locator}` : '';
+      const groupAuthor = abbreviatedGroup(entry.reference);
+      // Defined here: "National Institute of Mental Health (NIMH, 2020)".
+      const defines = groupAuthor !== undefined && defining.has(groupAuthor);
+      const bracket = defines
+        ? `(${entry.reference.authorAbbreviation?.trim()}, ${entry.year}${locator})`
+        : `(${entry.year}${locator})`;
+      segments = [entry.italic ? italic(entry.name) : upright(entry.name), upright(` ${bracket}`)];
     } else {
-      leader.text = formatParenthetical(entries);
+      segments = formatParenthetical(entries);
       leader.unresolved = group.some((occurrence) => !byKey.has(occurrence.citationKey));
     }
+    leader.text = segments.map((segment) => segment.text).join('');
+    if (segments.some((segment) => segment.italic)) leader.segments = joinSegments(segments);
 
     for (let i = index + 1; i < end; i++) {
       (labels[i] as CitationLabel).hidden = true;

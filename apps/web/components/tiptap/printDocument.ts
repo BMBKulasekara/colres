@@ -597,7 +597,19 @@ function resolveCitations(
       mark.remove();
       return;
     }
-    mark.textContent = label?.text ?? '[?]';
+    if (label?.segments) {
+      // An italic title inside the label: "(<em>Big Book</em>, 2020)".
+      mark.replaceChildren(
+        ...label.segments.map((segment) => {
+          if (!segment.italic) return mark.ownerDocument.createTextNode(segment.text);
+          const run = mark.ownerDocument.createElement('em');
+          run.textContent = segment.text;
+          return run;
+        })
+      );
+    } else {
+      mark.textContent = label?.text ?? '[?]';
+    }
     if (label?.unresolved) mark.classList.add('citation-unresolved');
   });
 }

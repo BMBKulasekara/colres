@@ -44,15 +44,36 @@ const BIBTEX_MONTHS = [
     "jul", "aug", "sep", "oct", "nov", "dec",
 ] as const;
 
-/** Surname from either "Ashish Vaswani" or "Vaswani, Ashish". */
+/**
+ * A group author — "{American Psychological Association}" — is braced so it is
+ * never split into a surname and initials, following the BibTeX convention.
+ */
+function isGroupAuthor(author: string): boolean {
+    return /^\{[^{}]+\}$/.test(author.trim());
+}
+
+/** Generational suffixes, which are never the surname. */
+const NAME_SUFFIX = /^(jr|sr|ii|iii|iv|v)\.?$/i;
+
+/**
+ * Surname from "Ashish Vaswani" or "Vaswani, Ashish"; the whole name for a
+ * braced group author.
+ */
 export function surnameOf(author: string): string {
     const name = author.trim();
     if (!name) return "";
+    if (isGroupAuthor(name)) return name.slice(1, -1).trim();
 
     if (name.includes(",")) {
-        return name.split(",")[0]?.trim() ?? "";
+        const parts = name.split(",").map((part) => part.trim());
+        // "Alexander C. Evans, Jr." — the part after the comma is a suffix.
+        if (parts.length === 2 && NAME_SUFFIX.test(parts[1] ?? "")) return surnameOf(parts[0] ?? "");
+        // "Evans Jr., Alexander C." — drop the suffix from the family name.
+        return (parts[0] ?? "").replace(/\s+(jr|sr|ii|iii|iv|v)\.?$/i, "");
     }
     const parts = name.split(/\s+/);
+    // "Alexander C. Evans Jr." — a generational suffix is not the surname.
+    if (parts.length > 2 && NAME_SUFFIX.test(parts[parts.length - 1] ?? "")) parts.pop();
     return parts[parts.length - 1] ?? "";
 }
 
@@ -103,6 +124,19 @@ function escapeBibtex(value: string): string {
     return value.replace(/[{}\\]/g, "\\$&").replace(/[&%$#_]/g, "\\$&");
 }
 
+/**
+ * The `author` field. A group author keeps its braces — which is what stops
+ * biblatex splitting "American Psychological Association" into a surname and
+ * initials — and everything else is escaped as usual.
+ */
+function bibtexNames(authors: string[]): string {
+    return authors
+        .map((author) =>
+            isGroupAuthor(author) ? `{${escapeBibtex(author.trim().slice(1, -1))}}` : escapeBibtex(author)
+        )
+        .join(" and ");
+}
+
 function monthMacro(month: number | undefined): string | undefined {
     if (!month || month < 1 || month > 12) return undefined;
     return BIBTEX_MONTHS[month - 1];
@@ -118,7 +152,7 @@ function isoDate(timestamp: number | undefined): string | undefined {
 /** Serialises one reference as a BibTeX entry. */
 export function toBibtexEntry(reference: ReferenceLike): string {
     const fields: [string, string | undefined][] = [
-        ["author", reference.authors.length ? reference.authors.join(" and ") : undefined],
+        ["author", reference.authors.length ? bibtexNames(reference.authors) : undefined],
         ["title", protectCapitals(reference.title)],
         [
             reference.type === "inproceedings" || reference.type === "incollection"
@@ -142,11 +176,12 @@ export function toBibtexEntry(reference: ReferenceLike): string {
 
     const body = fields
         .filter((entry): entry is [string, string] => Boolean(entry[1]))
-        // `title` is pre-braced by protectCapitals, so escaping is skipped there.
-        // `month` is a macro name and must stay outside braces to resolve.
+        // `title` is pre-braced by protectCapitals and `author` by bibtexNames,
+        // so escaping is skipped there. `month` is a macro name and must stay
+        // outside braces to resolve.
         .map(([key, value]) => {
             if (key === "month") return `  ${key.padEnd(9)} = ${value}`;
-            const rendered = key === "title" ? value : escapeBibtex(value);
+            const rendered = key === "title" || key === "author" ? value : escapeBibtex(value);
             return `  ${key.padEnd(9)} = {${rendered}}`;
         })
         .join(",\n");

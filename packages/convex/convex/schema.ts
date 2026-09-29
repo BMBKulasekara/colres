@@ -374,6 +374,12 @@ export default defineSchema({
     edition: v.optional(v.string()),
     /** Editors of the book a chapter or paper appears in, in credited order. */
     editors: v.optional(v.array(v.string())),
+    /**
+     * The abbreviation a group author goes by in the text, e.g. "NIMH". APA
+     * defines it at the first citation and uses it alone afterwards; the
+     * reference list always spells the name out.
+     */
+    authorAbbreviation: v.optional(v.string()),
     abstract: v.optional(v.string()),
     source: v.union(
       v.literal("openalex"),

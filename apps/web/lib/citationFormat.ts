@@ -46,6 +46,13 @@ export interface DisplayReference {
   edition?: string;
   /** Editors of the book a chapter or paper appears in. */
   editors?: string[];
+  /**
+   * The abbreviation a group author goes by in the text, e.g. "NIMH". APA
+   * defines it at the first citation — "(National Institute of Mental Health
+   * [NIMH], 2020)" — and uses it alone after that. The reference list always
+   * spells the name out.
+   */
+  authorAbbreviation?: string;
 }
 
 export type CitationStyle = 'ieee' | 'apa' | 'acm' | 'vancouver' | 'chicago' | 'numeric';
@@ -56,23 +63,94 @@ export interface ReferenceSegment {
   italic?: boolean;
 }
 
-export function surname(author: string): string {
-  const name = author.trim();
-  if (name.includes(',')) return name.split(',')[0]?.trim() ?? name;
-  const parts = name.split(/\s+/);
-  return parts[parts.length - 1] ?? name;
+/**
+ * A group author — an organisation, agency or committee — is written in braces:
+ * "{American Psychological Association}". It is the BibTeX convention for a
+ * name that must not be split into surname and initials, so the same record
+ * exports correctly too. APA spells a group name out in full, never inverted.
+ */
+export function isGroupAuthor(author: string): boolean {
+  return /^\{[^{}]+\}$/.test(author.trim());
 }
 
-export function initials(author: string): string {
-  const name = author.trim();
-  const given = name.includes(',')
-    ? (name.split(',')[1] ?? '').trim()
-    : name.split(/\s+/).slice(0, -1).join(' ');
+/** Generational suffixes: "Jr.", "Sr.", and roman numerals up to V. */
+const NAME_SUFFIX = /^(jr|sr|ii|iii|iv|v)\.?$/i;
 
-  return given
-    .split(/\s+/)
+/** "jr" → "Jr.", "iii" → "III" — the form APA prints. */
+function normaliseSuffix(suffix: string): string {
+  const bare = suffix.replace(/\./g, '').toLowerCase();
+  return bare === 'jr' || bare === 'sr'
+    ? `${bare[0]?.toUpperCase()}${bare[1]}.`
+    : bare.toUpperCase();
+}
+
+interface NameParts {
+  family: string;
+  given: string;
+  suffix: string;
+}
+
+/**
+ * Splits a personal name into family name, given names and a generational
+ * suffix. Accepts "Alexander C. Evans Jr.", "Alexander C. Evans, Jr.",
+ * "Evans, Alexander C., Jr." and "Evans Jr., Alexander C.". The suffix is
+ * never mistaken for the surname, so "Evans Jr." is cited as "Evans".
+ */
+function nameParts(author: string): NameParts {
+  const name = author.trim();
+  if (isGroupAuthor(name)) return { family: stripBraces(name).trim(), given: '', suffix: '' };
+
+  if (name.includes(',')) {
+    const parts = name.split(',').map((part) => part.trim());
+    // "Alexander C. Evans, Jr." — a given-first name with the suffix after a comma.
+    if (parts.length === 2 && NAME_SUFFIX.test(parts[1] as string)) {
+      const { family, given } = nameParts(parts[0] as string);
+      return { family, given, suffix: normaliseSuffix(parts[1] as string) };
+    }
+    let family = parts[0] ?? '';
+    let suffix = parts.slice(2).find((part) => NAME_SUFFIX.test(part)) ?? '';
+    // "Evans Jr., Alexander C."
+    const familyWords = family.split(/\s+/);
+    if (!suffix && familyWords.length > 1 && NAME_SUFFIX.test(familyWords.at(-1) as string)) {
+      suffix = familyWords.pop() as string;
+      family = familyWords.join(' ');
+    }
+    return { family, given: parts[1] ?? '', suffix: suffix ? normaliseSuffix(suffix) : '' };
+  }
+
+  const words = name.split(/\s+/);
+  let suffix = '';
+  if (words.length > 2 && NAME_SUFFIX.test(words.at(-1) as string)) {
+    suffix = normaliseSuffix(words.pop() as string);
+  }
+  const family = words.pop() ?? name;
+  return { family, given: words.join(' '), suffix };
+}
+
+export function surname(author: string): string {
+  return nameParts(author).family;
+}
+
+/** "Jr.", "III", or "" — omitted in text citations, kept in the reference. */
+export function nameSuffix(author: string): string {
+  return nameParts(author).suffix;
+}
+
+/**
+ * "J. K." from "John Kenneth Smith". A hyphenated given name keeps its hyphen,
+ * "Eva-Maria" → "E.-M.", as APA writes it. A group author has none.
+ */
+export function initials(author: string): string {
+  return nameParts(author)
+    .given.split(/\s+/)
     .filter(Boolean)
-    .map((part) => `${part[0]?.toUpperCase()}.`)
+    .map((part) =>
+      part
+        .split('-')
+        .filter(Boolean)
+        .map((piece) => `${piece[0]?.toUpperCase()}.`)
+        .join('-')
+    )
     .join(' ');
 }
 
@@ -162,6 +240,75 @@ export function toSentenceCase(title: string): string {
     .join('');
 }
 
+/**
+ * The minor words APA leaves lowercase in title case: short conjunctions,
+ * articles and short prepositions — three letters or fewer. Every other word
+ * is capitalised, and so is any word opening the title or a subtitle.
+ */
+const APA_MINOR_WORDS = new Set([
+  'and',
+  'as',
+  'but',
+  'for',
+  'if',
+  'nor',
+  'or',
+  'so',
+  'yet',
+  'a',
+  'an',
+  'the',
+  'at',
+  'by',
+  'in',
+  'of',
+  'off',
+  'on',
+  'per',
+  'to',
+  'up',
+  'via',
+]);
+
+function capitalise(part: string): string {
+  return part.replace(/[A-Za-z]/, (letter) => letter.toUpperCase());
+}
+
+/**
+ * APA's title case, used when a title stands in for the author in the text:
+ * a reference list's "Oil painting" is cited as ("Oil Painting," 2019).
+ *
+ * Both halves of a hyphenated major word are capitalised ("Self-Report").
+ * Braced words, and words that already carry an inner capital, are kept as
+ * typed.
+ */
+export function toTitleCase(title: string): string {
+  const tokens = title.split(/(\{[^}]*\}|\s+)/).filter((token) => token !== '');
+  let atBreak = true;
+
+  return tokens
+    .map((token) => {
+      if (/^\s+$/.test(token)) return token;
+      if (token.startsWith('{')) {
+        atBreak = false;
+        return stripBraces(token);
+      }
+
+      const opensSentence = atBreak;
+      atBreak = SENTENCE_BREAK.test(token);
+      const bare = token.replace(/[^A-Za-z]/g, '').toLowerCase();
+
+      if (!opensSentence && APA_MINOR_WORDS.has(bare)) return token.toLowerCase();
+      // Split on hyphens and en dashes, keeping them, so "tibia–basitarsis"
+      // becomes "Tibia–Basitarsis".
+      return token
+        .split(/([-–])/)
+        .map((part) => (/[A-Z]/.test(part.slice(1)) ? part : capitalise(part)))
+        .join('');
+    })
+    .join('');
+}
+
 /** "5" → "5th", "2" → "2nd"; anything else ("Rev.", "2nd") as typed. */
 function editionLabel(edition: string): string {
   const cleaned = edition.trim().replace(/\s*(ed\.?|edn\.?|edition)$/i, '');
@@ -181,10 +328,16 @@ function editionLabel(edition: string): string {
   return `${n}${suffix}`;
 }
 
-/** "J. K. Smith" — initials before the surname. */
-function initialed(author: string): string {
+/**
+ * "J. K. Smith" — initials before the surname, then any suffix. IEEE sets the
+ * suffix off with a comma, "A. C. Evans, Jr."; APA, writing a name in normal
+ * order, does not: "A. C. Evans Jr.".
+ */
+function initialed(author: string, suffixSeparator = ', '): string {
   const i = initials(author);
-  return i ? `${i} ${surname(author)}` : surname(author);
+  const suffix = nameSuffix(author);
+  const name = i ? `${i} ${surname(author)}` : surname(author);
+  return suffix ? `${name}${suffixSeparator}${suffix}` : name;
 }
 
 /**
@@ -211,7 +364,7 @@ function ieeeAuthors(authors: string[]): ReferenceSegment[] {
     return [upright(`${initialed(authors[0] as string)} `), italic('et al.')];
   }
 
-  const names = authors.map(initialed);
+  const names = authors.map((name) => initialed(name));
   if (names.length === 1) return [upright(names[0] as string)];
   if (names.length === 2) return [upright(`${names[0]} and ${names[1]}`)];
 
@@ -355,7 +508,7 @@ function enDashPages(pages: string): string {
 /** "A. Vaswani, N. Shazeer, et al." — the shape the other numbered styles use. */
 function initialsFirst(authors: string[], max = 6): string {
   if (authors.length === 0) return 'Unknown author';
-  const shown = authors.slice(0, max).map(initialed);
+  const shown = authors.slice(0, max).map((name) => initialed(name));
   return authors.length > max ? `${shown.join(', ')}, et al.` : shown.join(', ');
 }
 
@@ -376,7 +529,9 @@ function withPeriod(value: string): string {
 }
 
 /** Drops empty segments and merges neighbours that share a style. */
-function joinSegments(segments: (ReferenceSegment | null | undefined)[]): ReferenceSegment[] {
+export function joinSegments(
+  segments: (ReferenceSegment | null | undefined)[]
+): ReferenceSegment[] {
   const out: ReferenceSegment[] = [];
 
   for (const segment of segments) {
@@ -392,8 +547,8 @@ function joinSegments(segments: (ReferenceSegment | null | undefined)[]): Refere
   return out;
 }
 
-const upright = (text: string): ReferenceSegment => ({ text });
-const italic = (text: string): ReferenceSegment => ({ text, italic: true });
+export const upright = (text: string): ReferenceSegment => ({ text });
+export const italic = (text: string): ReferenceSegment => ({ text, italic: true });
 
 /**
  * A reference with no publication of its own to sit in — no journal, no
@@ -496,7 +651,7 @@ function formatIeee(reference: DisplayReference): ReferenceSegment[] {
         reference.edition ? upright(`, ${editionLabel(reference.edition)} ed.`) : null,
         reference.editors?.length
           ? upright(
-              `, ${reference.editors.map(initialed).join(', ')}, ${reference.editors.length > 1 ? 'Eds.' : 'Ed.'}`
+              `, ${reference.editors.map((name) => initialed(name)).join(', ')}, ${reference.editors.length > 1 ? 'Eds.' : 'Ed.'}`
             )
           : null,
         address ? upright(`, ${address}`) : null,
@@ -569,7 +724,10 @@ const APA_MONTHS = [
 /** "Appleby, D. C." — surname first, then initials. */
 function apaName(author: string): string {
   const i = initials(author);
-  return i ? `${surname(author)}, ${i}` : surname(author);
+  const suffix = nameSuffix(author);
+  const name = i ? `${surname(author)}, ${i}` : surname(author);
+  // "Evans, A. C., Jr." — the suffix follows the initials after a comma.
+  return suffix ? `${name}, ${suffix}` : name;
 }
 
 /**
@@ -610,18 +768,55 @@ function apaDate(reference: DisplayReference, yearSuffix = '', withMonth = false
 /** A DOI as the https://doi.org/ URL APA asks for, whatever form it was stored in. */
 export function doiUrl(doi: string): string {
   const trimmed = doi.trim();
+  // Older forms — "doi:10…", "http://dx.doi.org/10…", "http://doi.org/10…" —
+  // are all updated to the current https://doi.org/ form.
+  const resolver = /^https?:\/\/(dx\.)?doi\.org\//i;
+  if (resolver.test(trimmed)) return `https://doi.org/${trimmed.replace(resolver, '')}`;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   return `https://doi.org/${trimmed.replace(/^doi:\s*/i, '')}`;
+}
+
+/** "February 26, 2020", read in UTC for the reason given at `ieeeAccessDate`. */
+function apaRetrievalDate(timestamp: number): string | undefined {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return `${APA_MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}, ${date.getUTCFullYear()}`;
 }
 
 /**
  * The trailing link. A DOI wins over a URL when both are known. APA puts no
  * period after either, since the period could be taken as part of the link.
+ *
+ * An undated web page is one designed to change, so APA adds the date it was
+ * read: "Retrieved January 9, 2020, from https://…". Dated pages do not
+ * take one.
  */
 function apaLink(reference: DisplayReference): ReferenceSegment | null {
   if (reference.doi) return upright(` ${doiUrl(reference.doi)}`);
-  if (reference.url) return upright(` ${reference.url}`);
-  return null;
+  if (!reference.url) return null;
+
+  const retrieved =
+    isWebPage(reference) && !reference.year && reference.accessed
+      ? apaRetrievalDate(reference.accessed)
+      : undefined;
+  return upright(
+    retrieved ? ` Retrieved ${retrieved}, from ${reference.url}` : ` ${reference.url}`
+  );
+}
+
+/**
+ * True when the publisher or site named in the source element is the group
+ * that wrote the work. APA then leaves it out, so the name appears only once:
+ * "American Psychiatric Association. (2022). Diagnostic and statistical…"
+ */
+function sameAsAuthor(authors: string[], outlet: string): boolean {
+  if (authors.length !== 1) return false;
+  const normalise = (value: string) =>
+    stripBraces(value)
+      .trim()
+      .replace(/^the\s+/i, '')
+      .toLowerCase();
+  return normalise(surname(authors[0] as string)) === normalise(outlet);
 }
 
 /**
@@ -629,7 +824,7 @@ function apaLink(reference: DisplayReference): ReferenceSegment | null {
  * and a comma before it only when there are three or more.
  */
 function apaEditors(editors: string[]): string {
-  const names = editors.map(initialed);
+  const names = editors.map((editor) => initialed(editor, ' '));
   const list =
     names.length <= 2
       ? names.join(' & ')
@@ -705,12 +900,14 @@ function formatApa(reference: DisplayReference, yearSuffix = ''): ReferenceSegme
       break;
     }
 
-    case 'techreport':
+    case 'techreport': {
       titleSegments = italicTitle(title, number ? ` (Report No. ${number})` : '');
+      const issuer = venue || publisher;
       source = [
-        venue || publisher ? upright(` ${endSentence((venue || publisher) as string)}`) : null,
+        issuer && !sameAsAuthor(authors, issuer) ? upright(` ${endSentence(issuer)}`) : null,
       ];
       break;
+    }
 
     case 'phdthesis': {
       const institution = venue || publisher;
@@ -727,7 +924,9 @@ function formatApa(reference: DisplayReference, yearSuffix = ''): ReferenceSegme
     default: {
       titleSegments = italicTitle(title, type === 'book' && edition ? ` (${edition})` : '');
       const outlet = webPage ? venue || publisher : publisher || venue;
-      source = [outlet ? upright(` ${endSentence(outlet)}`) : null];
+      source = [
+        outlet && !sameAsAuthor(authors, outlet) ? upright(` ${endSentence(outlet)}`) : null,
+      ];
     }
   }
 
