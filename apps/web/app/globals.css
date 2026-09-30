@@ -2,9 +2,98 @@
 @import "@repo/ui/globals.css";
 @source "../../../packages/ui/src/**/*.tsx";
 
+/*
+ * Three faces, each with one job: Geist for the interface, Source Serif for
+ * the document canvas, Geist Mono for citation keys, DOIs and shortcuts.
+ */
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-source-serif), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/*
+ * The continuous view: one long sheet of paper on the canvas, rather than
+ * text floating in the app. Paper stays white in either theme, so its ink
+ * stays dark with it — the same rule the paged view follows.
+ */
+.continuous-backdrop {
+  background: var(--muted);
+  padding: 2rem 1rem 4rem;
+}
+
+.continuous-sheet {
+  max-width: 52rem;
+  min-height: calc(100% - 2rem);
+  margin: 0 auto;
+  border-radius: 0.25rem;
+  background: #ffffff;
+  box-shadow:
+    0 1px 3px rgba(15, 23, 42, 0.12),
+    0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.continuous-sheet .tiptap {
+  min-height: 60vh;
+  padding: 3.5rem 4.5rem;
+  border-radius: 0.25rem;
+  color: #0f172a;
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: #0f172a;
+  }
+
+  blockquote {
+    color: #4b5563;
+  }
+}
+
+@media (max-width: 767px) {
+  .continuous-backdrop {
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .continuous-sheet {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .continuous-sheet .tiptap {
+    padding: 1.5rem 1rem 4rem;
+  }
+}
+
+.continuous-sheet .tiptap .page-break::after {
+  background: #ffffff;
+}
+
+/*
+ * The manuscript face, for documents with no template typography of their
+ * own. IEEE, APA and MLA documents keep the faces their formats prescribe.
+ */
+.doc-default .tiptap {
+  font-family: var(--font-serif);
+}
+
+.doc-default .continuous-sheet .tiptap {
+  font-size: 12pt;
+  line-height: 1.6;
+
+  p {
+    line-height: 1.6;
+  }
 }
 
 /* Tiptap Rich Text Editor Styling */
@@ -159,10 +248,8 @@ body {
  */
 .page-canvas-backdrop {
   background: var(--muted);
-  padding: 1.5rem 1rem 2.5rem;
+  padding: 2rem 1rem 3rem;
   overflow-x: auto;
-  border-bottom-left-radius: 0.5rem;
-  border-bottom-right-radius: 0.5rem;
 }
 
 .page-canvas {
@@ -251,7 +338,7 @@ body {
 .page-canvas__label {
   position: absolute;
   right: 0;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--muted-foreground);
@@ -275,7 +362,7 @@ body {
   transform: translateX(-50%);
   padding: 0 0.5rem;
   background: var(--background);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
