@@ -1,5 +1,6 @@
 'use client';
 
+import { OrganizationSwitcher, UserButton } from '@clerk/nextjs';
 import { Button } from '@repo/ui/components/ui/button';
 import {
   DropdownMenu,
@@ -23,7 +24,8 @@ const STATUS_ORDER: DocumentStatus[] = ['draft', 'active'];
 
 /**
  * The editor's one slim header: the way home, the editable title, the status
- * menu, the autosave state, who is here, and export.
+ * menu, the autosave state, who is here, export, and the account corner the
+ * other pages show in their top bar.
  */
 export function EditorHeader({
   title,
@@ -131,6 +133,13 @@ export function EditorHeader({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Switching changes the workspace for the home page and new
+            documents; this document stays where it is. */}
+        <div className="hidden md:block">
+          <OrganizationSwitcher />
+        </div>
+        <UserButton />
       </div>
     </header>
   );

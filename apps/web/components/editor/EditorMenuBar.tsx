@@ -14,6 +14,8 @@ import {
   MenubarItem,
   MenubarLabel,
   MenubarMenu,
+  MenubarRadioGroup,
+  MenubarRadioItem,
   MenubarSeparator,
   MenubarShortcut,
   MenubarSub,
@@ -23,6 +25,7 @@ import {
 } from '@repo/ui/components/ui/menubar';
 import type { Editor } from '@tiptap/core';
 import {
+  Bell,
   BetweenHorizontalEnd,
   BetweenHorizontalStart,
   BetweenVerticalEnd,
@@ -45,6 +48,7 @@ import {
   Save,
   Scissors,
   SeparatorHorizontal,
+  SunMoon,
   TableColumnsSplit,
   Table as TableIcon,
   TableRowsSplit,
@@ -57,6 +61,8 @@ import {
 } from 'lucide-react';
 import { type ComponentProps, useRef, useState } from 'react';
 import type { DocumentStyleId } from '../../lib/pageGeometry';
+import { NOTIFICATION_OPTIONS, useNotificationSettings } from '../../lib/useNotificationSettings';
+import { THEME_OPTIONS, type ThemePreference, useTheme } from '../../lib/useTheme';
 import type { TableSelectionInfo } from '../tiptap/TableExtensions';
 import { shortcut, TABLE_SIZES, type ToolbarState } from './EditorToolbar';
 import { PANELS, type PanelId } from './SidePanel';
@@ -176,6 +182,8 @@ export function EditorMenuBar({
   const isMla = styleId === 'mla';
   const chain = () => editor.chain().focus();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [notifications, setNotificationEnabled] = useNotificationSettings();
+  const [theme, setTheme] = useTheme();
 
   // A menu hands focus back to its trigger when it closes, which would pull
   // the caret out of the document right after a command put it there.
@@ -550,6 +558,50 @@ export function EditorMenuBar({
               <Keyboard />
               Keyboard shortcuts
             </MenubarItem>
+          </MenubarContent>
+        </MenubarMenu>
+
+        <MenubarMenu>
+          <MenubarTrigger>Settings</MenubarTrigger>
+          <MenubarContent {...contentProps} className="w-56">
+            <MenubarSub>
+              <MenubarSubTrigger>
+                <Bell />
+                Notifications
+              </MenubarSubTrigger>
+              <MenubarSubContent className="w-52">
+                <MenubarLabel>Show a badge for</MenubarLabel>
+                {NOTIFICATION_OPTIONS.map((option) => (
+                  <MenubarCheckboxItem
+                    key={option.id}
+                    checked={notifications[option.id]}
+                    onCheckedChange={(checked) => setNotificationEnabled(option.id, checked)}
+                    // Left open, so several can be switched in one visit.
+                    onSelect={(event) => event.preventDefault()}
+                  >
+                    {option.label}
+                  </MenubarCheckboxItem>
+                ))}
+              </MenubarSubContent>
+            </MenubarSub>
+            <MenubarSub>
+              <MenubarSubTrigger>
+                <SunMoon />
+                Appearance
+              </MenubarSubTrigger>
+              <MenubarSubContent className="w-40">
+                <MenubarRadioGroup
+                  value={theme}
+                  onValueChange={(value) => setTheme(value as ThemePreference)}
+                >
+                  {THEME_OPTIONS.map((option) => (
+                    <MenubarRadioItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenubarRadioItem>
+                  ))}
+                </MenubarRadioGroup>
+              </MenubarSubContent>
+            </MenubarSub>
           </MenubarContent>
         </MenubarMenu>
       </Menubar>

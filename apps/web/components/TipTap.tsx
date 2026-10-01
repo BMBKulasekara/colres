@@ -150,6 +150,8 @@ interface TipTapEditorProps {
   onOpenReferences?: () => void;
   /** Saving, exporting and the side panels, for the File and View menus. */
   documentActions?: DocumentMenuActions;
+  /** Reports focus mode, which hides the side panel the page thinks is open. */
+  onFocusModeChange?: (focusMode: boolean) => void;
   /** The docked side panel, drawn to the right of the page when open. */
   panel?: ReactNode;
   /** The panel's icon rail, on the far right edge. */
@@ -181,12 +183,17 @@ export default function TipTapEditor({
   onUploadImage,
   onOpenReferences,
   documentActions,
+  onFocusModeChange,
   panel,
   rail,
 }: TipTapEditorProps) {
   const [isEditable, setIsEditable] = useState(true);
   /** Focus mode leaves only the page: no outline, no side panel. */
   const [focusMode, setFocusMode] = useState(false);
+
+  useEffect(() => {
+    onFocusModeChange?.(focusMode);
+  }, [focusMode, onFocusModeChange]);
   const [isPaged, setIsPaged] = useState(false);
   const [pageCount, setPageCount] = useState(1);
   const [citedCount, setCitedCount] = useState(0);

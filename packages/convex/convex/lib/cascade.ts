@@ -57,6 +57,10 @@ export async function cascadeDeleteDocument(ctx: MutationCtx, id: Id<"documents"
       .query("contributionStats")
       .withIndex("by_document_and_day", (q) => q.eq("documentId", id))
       .collect(),
+    ctx.db
+      .query("trash")
+      .withIndex("by_document", (q) => q.eq("documentId", id))
+      .collect(),
   ]);
 
   for (const row of related.flat()) {

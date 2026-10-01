@@ -80,7 +80,7 @@ export default function Docs() {
   const quickTemplates = (templates ?? []).slice(0, QUICK_TEMPLATE_COUNT);
 
   const createDoc = useMutation(api.documents.createDocument);
-  const deleteDoc = useMutation(api.documents.deleteDocumentById);
+  const moveToTrash = useMutation(api.trash.moveToTrash);
 
   const [wizard, setWizard] = useState<WizardTarget>(null);
   const [isCreatingBlank, setIsCreatingBlank] = useState(false);
@@ -104,11 +104,11 @@ export default function Docs() {
     }
   };
 
-  const handleDelete = async (id: Id<'documents'>) => {
+  const handleMoveToTrash = async (id: Id<'documents'>) => {
     try {
-      await deleteDoc({ id });
+      await moveToTrash({ id });
     } catch (error) {
-      console.error('Failed to delete document:', error);
+      console.error('Failed to move document to the bin:', error);
     }
   };
 
@@ -184,19 +184,19 @@ export default function Docs() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+            <AlertDialogTitle>Move to bin?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{pendingDelete?.title}&rdquo; and its references, comments and chat will be
-              deleted for everyone. This can&rsquo;t be undone.
+              &ldquo;{pendingDelete?.title}&rdquo; moves to the bin for everyone who shares it. It
+              can be restored from the Bin for 30 days, then it is deleted for good.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              onClick={() => pendingDelete && handleDelete(pendingDelete._id)}
+              onClick={() => pendingDelete && handleMoveToTrash(pendingDelete._id)}
             >
-              Delete
+              Move to bin
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -337,7 +337,7 @@ function DocumentCard({
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={onDelete}>
               <Trash2 />
-              Delete…
+              Move to bin…
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

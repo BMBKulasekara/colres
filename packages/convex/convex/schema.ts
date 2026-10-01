@@ -497,4 +497,25 @@ export default defineSchema({
     .index("by_document_user_day", ["documentId", "userId", "day"])
     .index("by_user_and_day", ["userId", "day"]),
 
+  /**
+   * The recycle bin: one row per binned document.
+   *
+   * The document itself stays in `documents` with its id, so its chat,
+   * comments, references and live editing room stay attached to it. Binning
+   * adds a row here; restoring removes it. `orgId` and `author` are copied so
+   * a workspace's bin can be listed without reading every document.
+   */
+  trash: defineTable({
+    documentId: v.id("documents"),
+    orgId: v.optional(v.string()),
+    author: v.id("users"),
+    deletedBy: v.id("users"),
+    deletedAt: v.number(),
+    /** When the daily clean-up erases it: `deletedAt` plus 30 days. */
+    purgeAt: v.number(),
+  })
+    .index("by_document", ["documentId"])
+    .index("by_org", ["orgId", "deletedAt"])
+    .index("by_author", ["author", "deletedAt"])
+    .index("by_purge_at", ["purgeAt"]),
 });

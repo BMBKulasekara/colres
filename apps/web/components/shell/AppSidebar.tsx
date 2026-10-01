@@ -1,6 +1,13 @@
 'use client';
 
-import { OrganizationSwitcher, UserButton } from '@clerk/nextjs';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@repo/ui/components/ui/dropdown-menu';
 import {
   Sidebar,
   SidebarContent,
@@ -14,10 +21,13 @@ import {
   SidebarTrigger,
   useSidebar,
 } from '@repo/ui/components/ui/sidebar';
-import { House, LayoutTemplate } from 'lucide-react';
+import { House, LayoutTemplate, Monitor, Moon, Sun, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { THEME_OPTIONS, type ThemePreference, useTheme } from '../../lib/useTheme';
 import { ColresMark } from './ColresMark';
+
+const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon } as const;
 
 const NAV_ITEMS = [
   {
@@ -32,16 +42,24 @@ const NAV_ITEMS = [
     icon: LayoutTemplate,
     isActive: (pathname: string) => pathname.startsWith('/docs/templates'),
   },
+  {
+    title: 'Bin',
+    href: '/docs/trash',
+    icon: Trash2,
+    isActive: (pathname: string) => pathname.startsWith('/docs/trash'),
+  },
 ] as const;
 
 /**
- * The app's persistent navigation: the logo that always leads home, the
- * organization switcher that used to sit in the header, the main sections and
- * the account menu. Collapses to an icon rail with ⌘\.
+ * The app's persistent navigation: the logo that always leads home, the main
+ * sections and the theme. The organization switcher and account menu sit in
+ * the top bar beside the page. Collapses to an icon rail with ⌘\.
  */
 export function AppSidebar() {
   const pathname = usePathname() ?? '/';
   const { isMobile, setOpenMobile } = useSidebar();
+  const [theme, setTheme] = useTheme();
+  const ThemeIcon = THEME_ICONS[theme];
 
   return (
     <Sidebar collapsible="icon">
@@ -61,11 +79,6 @@ export function AppSidebar() {
             />
           </SidebarMenuItem>
         </SidebarMenu>
-
-        {/* Clerk's switcher cannot shrink to an icon, so the rail leaves it out. */}
-        <div className="group-data-[collapsible=icon]:hidden [&_.cl-organizationSwitcherTrigger]:w-full [&_.cl-organizationSwitcherTrigger]:justify-between [&_.cl-organizationSwitcherTrigger]:rounded-md [&_.cl-organizationSwitcherTrigger]:border [&_.cl-organizationSwitcherTrigger]:border-sidebar-border [&_.cl-organizationSwitcherTrigger]:bg-card [&_.cl-organizationSwitcherTrigger]:px-2 [&_.cl-organizationSwitcherTrigger]:py-1.5 [&_.cl-rootBox]:w-full">
-          <OrganizationSwitcher />
-        </div>
       </SidebarHeader>
 
       <SidebarContent>
@@ -94,17 +107,30 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem className="flex items-center px-1 py-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-            <UserButton
-              showName
-              appearance={{
-                elements: {
-                  userButtonBox: 'flex-row-reverse gap-2',
-                  userButtonOuterIdentifier:
-                    'text-sm font-medium text-sidebar-foreground group-data-[collapsible=icon]:hidden',
-                },
-              }}
-            />
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton tooltip="Theme">
+                  <ThemeIcon aria-hidden="true" />
+                  <span>Theme</span>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="end">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  Theme
+                </DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={theme}
+                  onValueChange={(value) => setTheme(value as ThemePreference)}
+                >
+                  {THEME_OPTIONS.map((option) => (
+                    <DropdownMenuRadioItem key={option.value} value={option.value}>
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
         {/* The rail has no room for the collapse button in the header. */}

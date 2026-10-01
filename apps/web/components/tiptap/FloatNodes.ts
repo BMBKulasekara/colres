@@ -57,7 +57,7 @@ export type FloatSpan = 'column' | 'page';
  * survive that. `crypto.randomUUID` is available in every browser this app
  * runs in; the fallback is for the server render, where no float is created.
  */
-function newFloatId(kind: FloatKind): string {
+export function newFloatId(kind: FloatKind): string {
   const random =
     typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID().slice(0, 8)

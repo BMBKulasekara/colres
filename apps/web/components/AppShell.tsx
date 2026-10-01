@@ -1,6 +1,6 @@
 'use client';
 
-import { ClerkProvider, useAuth } from '@clerk/nextjs';
+import { ClerkProvider, OrganizationSwitcher, UserButton, useAuth } from '@clerk/nextjs';
 import { SidebarInset, SidebarProvider } from '@repo/ui/components/ui/sidebar';
 import { TooltipProvider } from '@repo/ui/components/ui/tooltip';
 import { ConvexReactClient } from 'convex/react';
@@ -11,7 +11,7 @@ import { ClerkConvexSync } from './ClerkConvexSync';
 import { AppSidebar } from './shell/AppSidebar';
 
 /** Paths under /docs that are pages of the app rather than a document's slug. */
-const APP_PAGES_UNDER_DOCS = new Set(['templates']);
+const APP_PAGES_UNDER_DOCS = new Set(['templates', 'trash']);
 
 /** Clerk's own pages, which are shown bare. */
 function isAuthPath(pathname: string): boolean {
@@ -95,6 +95,11 @@ function WorkspaceFrame({
       </a>
       <AppSidebar />
       <SidebarInset>
+        {/* The account corner: which organization is active, and who is signed in. */}
+        <header className="flex h-14 shrink-0 items-center justify-end gap-3 border-b border-border bg-card px-4">
+          <OrganizationSwitcher />
+          <UserButton />
+        </header>
         <div id="main" tabIndex={-1} className="flex flex-1 flex-col outline-none">
           {children}
         </div>

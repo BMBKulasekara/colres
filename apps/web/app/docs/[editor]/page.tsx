@@ -40,6 +40,7 @@ import { printDocument } from '../../../components/tiptap/printDocument';
 import type { CitationStyle } from '../../../lib/citationFormat';
 import { type DocumentStatus, documentStatus, statusValue } from '../../../lib/documentStatus';
 import { getPageGeometry } from '../../../lib/pageGeometry';
+import { useNotificationSettings } from '../../../lib/useNotificationSettings';
 import { Room } from './Room';
 
 /** Which side panel was open last, so ⌘/ and a reload bring it back. */
@@ -150,9 +151,23 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
    * Driven from here rather than from inside the chat, because the whole point
    * of both is the time when the chat is not on screen.
    */
+  // Focus mode hides the docked panel without closing it, and a background
+  // tab shows nothing at all; in neither case has anyone read the messages.
+  const [focusMode, setFocusMode] = useState(false);
+  const [isTabVisible, setIsTabVisible] = useState(true);
+
+  useEffect(() => {
+    const onVisibilityChange = () => setIsTabVisible(document.visibilityState === 'visible');
+    onVisibilityChange();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
+  const isChatVisible = activePanel === 'chat' && isTabVisible && !(focusMode && canDockPanel);
+
   const { unreadCount, mentionsMe, toasts, dismissToast } = useChatNotifications(
     docs._id,
-    activePanel === 'chat'
+    isChatVisible
   );
 
   const openChat = useCallback(() => selectPanel('chat'), [selectPanel]);
@@ -183,7 +198,9 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
         throw new Error(`${file.name} could not be uploaded.`);
       }
 
-      const { storageId } = (await response.json()) as { storageId: Id<'_storage'> };
+      const { storageId } = (await response.json()) as {
+        storageId: Id<'_storage'>;
+      };
 
       // The storage id is not itself fetchable; a served URL has to be asked
       // for, and only the server can mint one.
@@ -216,7 +233,9 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
   // The bibliography is read here rather than only inside the references
   // panel, because the editor needs it too: a citation can only be numbered
   // once its key is known to be in the bibliography.
-  const references = useQuery(api.references.listReferences, { documentId: docs._id });
+  const references = useQuery(api.references.listReferences, {
+    documentId: docs._id,
+  });
 
   // The template's sections, for the outline's word budgets. The snapshot on
   // the document keeps the compilation contract only, so they are read from
@@ -342,11 +361,22 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [saveState]);
 
-  const badges: Partial<Record<PanelId, PanelBadge>> = {
-    references: {
-      count: references?.length ?? 0,
-      label: `${references?.length ?? 0} references`,
-    },
+  // References the text does not cite yet. Shown on Research as well: it is
+  // what is left to work into the paper from what has been collected.
+  const citedKeys = new Set(citationOrder);
+  const uncitedCount = (references ?? []).filter(
+    (reference) => !citedKeys.has(reference.citationKey)
+  ).length;
+  const uncitedBadge: PanelBadge = {
+    count: uncitedCount,
+    label: `${uncitedCount} ${uncitedCount === 1 ? 'reference' : 'references'} not cited yet`,
+  };
+
+  const [notifications] = useNotificationSettings();
+
+  const allBadges: Partial<Record<PanelId, PanelBadge>> = {
+    research: uncitedBadge,
+    references: uncitedBadge,
     comments: {
       count: threads.length,
       label: `${threads.length} open ${threads.length === 1 ? 'thread' : 'threads'}`,
@@ -358,6 +388,13 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
     },
   };
 
+  // Settings › Notifications switches each badge off on its own.
+  const badges: Partial<Record<PanelId, PanelBadge>> = {};
+  if (notifications.research) badges.research = allBadges.research;
+  if (notifications.references) badges.references = allBadges.references;
+  if (notifications.comments) badges.comments = allBadges.comments;
+  if (notifications.chat) badges.chat = allBadges.chat;
+
   const panelBody = activePanel && (
     <>
       {activePanel === 'research' && <ResearchPanel documentId={docs._id} />}
@@ -366,7 +403,10 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
           documentId={docs._id}
           citationStyle={citationStyle}
           onCitationStyleChange={(style) =>
-            void setDocumentCitationStyle({ id: docs._id, citationStyle: style })
+            void setDocumentCitationStyle({
+              id: docs._id,
+              citationStyle: style,
+            })
           }
           citationOrder={citationOrder}
           onInsertCitation={
@@ -431,6 +471,7 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
         onCitationOrderChange={setCitationOrder}
         onUploadImage={uploadFigureImage}
         onOpenReferences={() => selectPanel('references')}
+        onFocusModeChange={setFocusMode}
         documentActions={{
           onNewDocument: openNewDocument,
           onOpenDocuments: () => router.push('/docs'),
@@ -473,7 +514,11 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
       {wizardOpen && <CreateDocumentWizard open onOpenChange={setWizardOpen} />}
 
       {/* Bottom-left, so the notifications never sit on top of the docked panel. */}
-      <ChatToasts toasts={toasts} onOpen={openChat} onDismiss={dismissToast} />
+      <ChatToasts
+        toasts={notifications.chat ? toasts : []}
+        onOpen={openChat}
+        onDismiss={dismissToast}
+      />
     </div>
   );
 }
