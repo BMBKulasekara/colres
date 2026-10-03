@@ -1,6 +1,13 @@
 'use client';
 
 import { Button } from '@repo/ui/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@repo/ui/components/ui/dialog';
 import type { Editor } from '@tiptap/core';
 import {
   BetweenHorizontalEnd,
@@ -29,15 +36,105 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Number.isFinite(value) ? Math.round(value) : min));
 }
 
+/** Inserts a captioned table of the given size, clamped to what a page holds. */
+function insertTable(editor: Editor, rows: number, cols: number) {
+  editor
+    .chain()
+    .focus()
+    .insertTableFigure({
+      rows: clamp(rows, 1, MAX_ROWS),
+      cols: clamp(cols, 1, MAX_COLS),
+    })
+    .run();
+}
+
 /**
- * The table button and the picker it opens: hover the grid for a small
- * table, or type the size for a larger one.
+ * Chooses a new table's size: hover the grid for a small table, or type the
+ * size for a larger one.
  */
-export function TableInsertMenu({ editor }: { editor: Editor }) {
-  const [open, setOpen] = useState(false);
+function TableSizePicker({ onPick }: { onPick: (rows: number, cols: number) => void }) {
   const [hover, setHover] = useState<{ rows: number; cols: number } | null>(null);
   const [rows, setRows] = useState(3);
   const [cols, setCols] = useState(3);
+
+  const shown = hover ?? { rows, cols };
+
+  return (
+    <>
+      <p className="mb-1.5 text-[11px] font-semibold text-foreground">
+        {shown.rows} × {shown.cols} table
+      </p>
+
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the grid is a
+          pointer shortcut; the fields below are the accessible route. */}
+      <div
+        className="grid gap-0.5"
+        style={{ gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))` }}
+        onMouseLeave={() => setHover(null)}
+      >
+        {Array.from({ length: GRID_ROWS * GRID_COLS }, (_, index) => {
+          const row = Math.floor(index / GRID_COLS) + 1;
+          const col = (index % GRID_COLS) + 1;
+          const active = row <= shown.rows && col <= shown.cols;
+          return (
+            <button
+              key={`${row}-${col}`}
+              type="button"
+              tabIndex={-1}
+              aria-label={`${row} by ${col} table`}
+              onMouseEnter={() => setHover({ rows: row, cols: col })}
+              onClick={() => onPick(row, col)}
+              className={`aspect-square rounded-[2px] border ${
+                active ? 'border-primary bg-primary/20' : 'border-border bg-muted/40'
+              }`}
+            />
+          );
+        })}
+      </div>
+
+      <form
+        className="mt-2.5 flex items-end gap-2 border-t border-border pt-2.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onPick(rows, cols);
+        }}
+      >
+        <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+          Rows
+          <input
+            type="number"
+            min={1}
+            max={MAX_ROWS}
+            value={rows}
+            onChange={(event) => setRows(Number(event.target.value))}
+            className="h-6 w-14 rounded border border-border bg-background px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
+          Columns
+          <input
+            type="number"
+            min={1}
+            max={MAX_COLS}
+            value={cols}
+            onChange={(event) => setCols(Number(event.target.value))}
+            className="h-6 w-14 rounded border border-border bg-background px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
+          />
+        </label>
+        <Button type="submit" size="sm" className="ml-auto h-6 px-2 text-[11px]">
+          Insert
+        </Button>
+      </form>
+      <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
+        The first row is a header row.
+      </p>
+    </>
+  );
+}
+
+/** The table button and the size picker it opens. */
+export function TableInsertMenu({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,21 +153,6 @@ export function TableInsertMenu({ editor }: { editor: Editor }) {
     };
   }, [open]);
 
-  const insert = (rowCount: number, colCount: number) => {
-    editor
-      .chain()
-      .focus()
-      .insertTableFigure({
-        rows: clamp(rowCount, 1, MAX_ROWS),
-        cols: clamp(colCount, 1, MAX_COLS),
-      })
-      .run();
-    setOpen(false);
-    setHover(null);
-  };
-
-  const shown = hover ?? { rows, cols };
-
   return (
     <div ref={containerRef} className="relative">
       <Button
@@ -86,75 +168,54 @@ export function TableInsertMenu({ editor }: { editor: Editor }) {
 
       {open && (
         <div className="absolute left-0 top-full z-30 mt-1 w-56 rounded-lg border border-border bg-background p-2.5 shadow-md">
-          <p className="mb-1.5 text-[11px] font-semibold text-foreground">
-            {shown.rows} × {shown.cols} table
-          </p>
-
-          {/* biome-ignore lint/a11y/noStaticElementInteractions: the grid is a
-              pointer shortcut; the fields below are the accessible route. */}
-          <div
-            className="grid gap-0.5"
-            style={{ gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))` }}
-            onMouseLeave={() => setHover(null)}
-          >
-            {Array.from({ length: GRID_ROWS * GRID_COLS }, (_, index) => {
-              const row = Math.floor(index / GRID_COLS) + 1;
-              const col = (index % GRID_COLS) + 1;
-              const active = row <= shown.rows && col <= shown.cols;
-              return (
-                <button
-                  key={`${row}-${col}`}
-                  type="button"
-                  tabIndex={-1}
-                  aria-label={`${row} by ${col} table`}
-                  onMouseEnter={() => setHover({ rows: row, cols: col })}
-                  onClick={() => insert(row, col)}
-                  className={`aspect-square rounded-[2px] border ${
-                    active ? 'border-primary bg-primary/20' : 'border-border bg-muted/40'
-                  }`}
-                />
-              );
-            })}
-          </div>
-
-          <div className="mt-2.5 flex items-end gap-2 border-t border-border pt-2.5">
-            <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
-              Rows
-              <input
-                type="number"
-                min={1}
-                max={MAX_ROWS}
-                value={rows}
-                onChange={(event) => setRows(Number(event.target.value))}
-                className="h-6 w-14 rounded border border-border bg-background px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
-              />
-            </label>
-            <label className="flex flex-col gap-0.5 text-[10px] text-muted-foreground">
-              Columns
-              <input
-                type="number"
-                min={1}
-                max={MAX_COLS}
-                value={cols}
-                onChange={(event) => setCols(Number(event.target.value))}
-                className="h-6 w-14 rounded border border-border bg-background px-1.5 text-[11px] text-foreground outline-none focus:border-primary"
-              />
-            </label>
-            <Button
-              type="button"
-              size="sm"
-              className="ml-auto h-6 px-2 text-[11px]"
-              onClick={() => insert(rows, cols)}
-            >
-              Insert
-            </Button>
-          </div>
-          <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
-            The first row is a header row.
-          </p>
+          <TableSizePicker
+            onPick={(rows, cols) => {
+              insertTable(editor, rows, cols);
+              setOpen(false);
+            }}
+          />
         </div>
       )}
     </div>
+  );
+}
+
+/** The same size picker as a dialog, for the menus and the slash command. */
+export function TableInsertDialog({
+  editor,
+  open,
+  onOpenChange,
+}: {
+  editor: Editor;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="sm:max-w-xs"
+        // The caret goes back into the document, inside the new table.
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          editor.commands.focus();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Insert table</DialogTitle>
+          <DialogDescription>
+            Pick a size on the grid, or type the rows and columns.
+          </DialogDescription>
+        </DialogHeader>
+        <div>
+          <TableSizePicker
+            onPick={(rows, cols) => {
+              insertTable(editor, rows, cols);
+              onOpenChange(false);
+            }}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

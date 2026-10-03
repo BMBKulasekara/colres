@@ -9,11 +9,13 @@ import {
 } from '@liveblocks/react-tiptap';
 import { api } from '@repo/convex/_generated/api';
 import { Button } from '@repo/ui/components/ui/button';
+import { Extension } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import { TableCell, TableHeader } from '@tiptap/extension-table';
 import Underline from '@tiptap/extension-underline';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
@@ -21,60 +23,67 @@ import { useMutation as useConvexMutation } from 'convex/react';
 import {
   Bold,
   BookMarked,
-  Code,
-  Columns2,
-  Hash,
   Heading1,
   Heading2,
   Heading3,
-  Heading4,
-  Heading5,
   Image as ImageIcon,
   Italic,
   Link2,
-  Link as Link2Icon,
   List,
   ListOrdered,
-  Loader2,
-  MessageSquareText,
-  PanelTop,
-  Printer,
+  MessageSquarePlus,
   Quote,
-  Redo2,
   SeparatorHorizontal,
-  Strikethrough,
+  Table as TableIcon,
   Terminal,
-  Type,
-  Underline as UnderlineIcon,
-  Undo2,
   Unlink,
   UserRound,
 } from 'lucide-react';
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type CitationStyle, isAuthorDateStyle } from '../lib/citationFormat';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  CITATION_STYLE_LABELS,
+  type CitationStyle,
+  isAuthorDateStyle,
+} from '../lib/citationFormat';
+import type { TemplateSection } from '../lib/documentOutline';
 import type { FloatScheme } from '../lib/floatNumbering';
 import { getPageGeometry, PAGE_GAP_PX } from '../lib/pageGeometry';
 import { useContributionTracker } from '../lib/useContributionTracker';
+import { type CitableReference, CitePicker } from './editor/CitePicker';
+import { DocumentOutline } from './editor/DocumentOutline';
+import { type DocumentMenuActions, EditorMenuBar } from './editor/EditorMenuBar';
+import { EditorStatusBar, type StatusWarning } from './editor/EditorStatusBar';
+import { EditorToolbar, shortcut, type ToolbarState } from './editor/EditorToolbar';
+import { useDocumentOutline } from './editor/useDocumentOutline';
+import { useMediaQuery } from './editor/useMediaQuery';
 import { ApaRoles, findRunningHead, RUNNING_HEAD_MAX, RunningHead } from './tiptap/ApaNodes';
 import { Bibliography, hasBibliography, refreshBibliography } from './tiptap/BibliographyNode';
 import { Citation } from './tiptap/CitationExtension';
-import {
-  CitationNumbering,
-  getCitationOrder,
-  refreshCitationNumbering,
-} from './tiptap/CitationNumbering';
+import { CitationNumbering, refreshCitationNumbering } from './tiptap/CitationNumbering';
 import { CrossReference } from './tiptap/CrossReferenceNode';
 import { Figure, FloatCaption, FloatNote, floatAt, TableFigure } from './tiptap/FloatNodes';
 import { FloatNumbering, getFloats } from './tiptap/FloatNumbering';
 import { PageBreak } from './tiptap/PageBreakNode';
 import { Pagination, setPagedView } from './tiptap/PaginationExtension';
-import { type PrintableReference, printDocument } from './tiptap/printDocument';
+import type { PrintableReference } from './tiptap/printDocument';
 import { SectionNumbering } from './tiptap/SectionNumbering';
-import { TableInsertMenu, TableToolbar } from './tiptap/TableControls';
+import { type SlashCommandItem, SlashCommands } from './tiptap/SlashCommands';
+import { TableInsertDialog, TableToolbar } from './tiptap/TableControls';
 import { getTableSelectionInfo, ResearchTable, ResearchTableRow } from './tiptap/TableExtensions';
 
 /** Paged view is a personal reading preference, so it is remembered per browser. */
 const PAGED_VIEW_STORAGE_KEY = 'colres:editor:paged-view';
+
+/** Whether the outline is shown; unset means "on screens wide enough for it". */
+const OUTLINE_STORAGE_KEY = 'colres:editor:outline';
 
 /**
  * The paged view lays the document out as the browser would print it, which is
@@ -87,24 +96,41 @@ const APPROXIMATE_LAYOUT_NOTE =
 
 /** Shown on the paged-view toggle for two-column formats, where it does more. */
 const COLUMN_LAYOUT_NOTE =
-  'This format sets two columns. Page View shows the column flow; the continuous view does not.';
+  'This format sets two columns. Paged view shows the column flow; the continuous view does not.';
+
+/**
+ * y-prosemirror tags the transactions it applies from the shared document
+ * with this meta key. That covers other people's edits, and also this
+ * browser's own undo and redo, which it flags separately.
+ */
+const REMOTE_CHANGE_META = 'y-sync$';
+
+function isLocalChange(
+  meta: { isChangeOrigin?: boolean; isUndoRedoOperation?: boolean } | undefined
+) {
+  return !meta?.isChangeOrigin || meta.isUndoRedoOperation === true;
+}
 
 interface TipTapEditorProps {
-  isPageScrolled?: boolean;
   initialContent?: string;
-  onChange?: (html: string) => void;
+  /**
+   * Called with the document's HTML after every change. `isLocal` is false
+   * for a change that arrived from a collaborator, which this browser does
+   * not need to save — the collaborator's own browser does.
+   */
+  onChange?: (html: string, change: { isLocal: boolean }) => void;
   onEditorReady?: (editor: any) => void;
-  /** Used as the print job's document title. */
-  documentTitle?: string;
   /** `templateSnapshot.classOptions`, which decide page size and body size. */
   classOptions?: readonly string[];
   /** `templateSnapshot.documentClass` — decides margins, columns, typography. */
   documentClass?: string;
+  /** The template's sections, for word budgets in the outline. */
+  templateSections?: readonly TemplateSection[];
   /**
    * The bibliography, for resolving citation numbers and for printing the
    * reference list. Absent until the references query has loaded.
    */
-  references?: readonly PrintableReference[];
+  references?: readonly (PrintableReference & CitableReference)[];
   citationStyle?: CitationStyle;
   /**
    * Reports the order citations first appear in, which is the order IEEE
@@ -120,40 +146,84 @@ interface TipTapEditorProps {
    * captioned, just not illustrated.
    */
   onUploadImage?: (file: File) => Promise<string>;
+  /** Opens the References panel, for adding a source the author cannot find. */
+  onOpenReferences?: () => void;
+  /** Saving, exporting and the side panels, for the File and View menus. */
+  documentActions?: DocumentMenuActions;
+  /** Reports focus mode, which hides the side panel the page thinks is open. */
+  onFocusModeChange?: (focusMode: boolean) => void;
+  /** The docked side panel, drawn to the right of the page when open. */
+  panel?: ReactNode;
+  /** The panel's icon rail, on the far right edge. */
+  rail?: ReactNode;
+}
+
+/** How many times each source is cited, for the citation picker. */
+function countCitations(doc: PMNode): Map<string, number> {
+  const counts = new Map<string, number>();
+  doc.descendants((node) => {
+    if (node.type.name === 'citation') {
+      const key = String(node.attrs.citationKey ?? '');
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  });
+  return counts;
 }
 
 export default function TipTapEditor({
-  isPageScrolled = false,
   initialContent,
   onChange,
   onEditorReady,
-  documentTitle,
   classOptions,
   documentClass,
+  templateSections,
   references,
   citationStyle = 'numeric',
   onCitationOrderChange,
   onUploadImage,
+  onOpenReferences,
+  documentActions,
+  onFocusModeChange,
+  panel,
+  rail,
 }: TipTapEditorProps) {
   const [isEditable, setIsEditable] = useState(true);
+  /** Focus mode leaves only the page: no outline, no side panel. */
+  const [focusMode, setFocusMode] = useState(false);
+
+  useEffect(() => {
+    onFocusModeChange?.(focusMode);
+  }, [focusMode, onFocusModeChange]);
   const [isPaged, setIsPaged] = useState(false);
   const [pageCount, setPageCount] = useState(1);
+  const [citedCount, setCitedCount] = useState(0);
 
   /**
    * Figures and tables the prose never refers to.
    *
    * IEEE requires every one of them to be cited in the text, so this is a
    * defect rather than a preference — and one the author cannot see, which is
-   * why the toolbar says so.
+   * why the outline and status bar say so.
    */
   const [uncitedFloats, setUncitedFloats] = useState<{ id: string; label: string }[]>([]);
   const uncitedCallbackRef = useRef<((uncited: { id: string; label: string }[]) => void) | null>(
     setUncitedFloats
   );
+  const uncitedFloatIds = useMemo(
+    () => new Set(uncitedFloats.map((float) => float.id)),
+    [uncitedFloats]
+  );
 
   const [isUploading, setIsUploading] = useState(false);
-  const [floatMenuOpen, setFloatMenuOpen] = useState(false);
+  const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  /** The citation search, and how often each source was cited when it opened. */
+  const [citePicker, setCitePicker] = useState<Map<string, number> | null>(null);
+
+  const isWide = useMediaQuery('(min-width: 1280px)');
+  const [outlinePreference, setOutlinePreference] = useState<boolean | null>(null);
+  const outlineVisible = !focusMode && (outlinePreference ?? isWide);
 
   // Convex hands back a fresh array on every poll, so the key set is rebuilt
   // from a value signature rather than from the array's identity.
@@ -169,6 +239,8 @@ export default function TipTapEditor({
   const knownKeysRef = useRef<ReadonlySet<string>>(knownKeys);
   const orderCallbackRef = useRef(onCitationOrderChange);
   orderCallbackRef.current = onCitationOrderChange;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   // The reference list the editor draws is derived from all three of these,
   // and none of them are part of the document.
@@ -237,6 +309,21 @@ export default function TipTapEditor({
     [geometry, canvasHeightPx]
   );
 
+  /*
+   * Actions reachable from keyboard shortcuts and slash commands. Both are
+   * wired into extensions built once, so they read the current handlers
+   * through this ref rather than capturing the first render's.
+   */
+  const actionsRef = useRef({
+    openCite: () => {},
+    insertFigure: () => {},
+    insertTable: () => {},
+    comment: () => {},
+    toggleOutline: () => {},
+  });
+
+  const slashItemsRef = useRef<readonly SlashCommandItem[]>([]);
+
   const liveblocks = useLiveblocksExtension({
     initialContent,
   });
@@ -263,6 +350,7 @@ export default function TipTapEditor({
         onOrderChange: (order) => {
           citationOrderRef.current = order;
           orderCallbackRef.current?.(order);
+          setCitedCount(order.length);
           // Citing a new source renumbers the list and may add an entry to it,
           // so the section has to be redrawn along with the markers.
           if (editorRef.current) refreshBibliography(editorRef.current);
@@ -314,11 +402,33 @@ export default function TipTapEditor({
         },
       }),
       Placeholder.configure({
-        placeholder: 'Start typing your document here...',
+        placeholder: 'Start writing, or type / for commands…',
+      }),
+      SlashCommands.configure({
+        resolveItems: () => slashItemsRef.current,
+      }),
+      Extension.create({
+        name: 'workspaceShortcuts',
+        addKeyboardShortcuts: () => ({
+          'Mod-Shift-c': () => {
+            actionsRef.current.openCite();
+            return true;
+          },
+          'Mod-Shift-f': () => {
+            actionsRef.current.insertFigure();
+            return true;
+          },
+          'Mod-Alt-m': () => {
+            actionsRef.current.comment();
+            return true;
+          },
+        }),
       }),
     ],
-    onUpdate: ({ editor }) => {
-      onChange?.(editor.getHTML());
+    onUpdate: ({ editor, transaction }) => {
+      onChangeRef.current?.(editor.getHTML(), {
+        isLocal: isLocalChange(transaction.getMeta(REMOTE_CHANGE_META)),
+      });
     },
   });
 
@@ -388,67 +498,90 @@ export default function TipTapEditor({
     }
   }, [editor, isPaged]);
 
-  const handlePrint = useCallback(() => {
-    if (!editor) return;
-    printDocument({
-      title: documentTitle?.trim() || 'Untitled Document',
-      contentHtml: editor.getHTML(),
-      geometry,
-      citationStyle,
-      references: references ?? [],
-      // The printed reference list is numbered by first appearance, so it
-      // needs the same order the markers in the text were numbered from.
-      citationOrder: getCitationOrder(editor),
-    });
-  }, [editor, documentTitle, geometry, citationStyle, references]);
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(OUTLINE_STORAGE_KEY);
+      if (stored !== null) setOutlinePreference(stored === 'true');
+    } catch {
+      // Falls back to showing the outline wherever it fits.
+    }
+  }, []);
 
-  const {
-    isBold,
-    isItalic,
-    isUnderline,
-    isStrikethrough,
-    isCode,
-    isHeading,
-    isUnnumbered,
-    isCitation,
-    citationKey,
-    citationLocator,
-    citationNarrative,
-    runningHead,
-    hasReferencesSection,
-    isInFloat,
-    floatSpan,
-    tableInfo,
-    floatHasNote,
-  } = useEditorState({
+  const toggleOutline = useCallback(() => {
+    setOutlinePreference((previous) => {
+      const next = !(previous ?? isWide);
+      try {
+        window.localStorage.setItem(OUTLINE_STORAGE_KEY, String(next));
+      } catch {
+        // As above.
+      }
+      return next;
+    });
+  }, [isWide]);
+
+  // ⌘\ toggles the outline. The app sidebar owns that shortcut elsewhere; the
+  // editor has no sidebar, so here the outline is the thing beside the page.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === '\\') {
+        event.preventDefault();
+        toggleOutline();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [toggleOutline]);
+
+  const editorState = useEditorState({
     editor,
-    selector: (ctx) => ({
-      isBold: ctx.editor?.isActive('bold') ?? false,
-      isItalic: ctx.editor?.isActive('italic') ?? false,
-      isUnderline: ctx.editor?.isActive('underline') ?? false,
-      isStrikethrough: ctx.editor?.isActive('strike') ?? false,
-      isCode: ctx.editor?.isActive('code') ?? false,
-      isHeading: ctx.editor?.isActive('heading') ?? false,
-      isUnnumbered: ctx.editor?.getAttributes('heading').unnumbered === true,
-      isCitation: ctx.editor?.isActive('citation') ?? false,
-      citationKey: (ctx.editor?.getAttributes('citation').citationKey as string) ?? '',
-      citationLocator: (ctx.editor?.getAttributes('citation').locator as string) ?? '',
-      citationNarrative: ctx.editor?.getAttributes('citation').narrative === true,
-      runningHead: ctx.editor
-        ? (findRunningHead(ctx.editor.state.doc)?.node.textContent ?? null)
-        : null,
-      hasReferencesSection: ctx.editor ? hasBibliography(ctx.editor) : false,
-      isInFloat:
-        (ctx.editor?.isActive('figure') ?? false) || (ctx.editor?.isActive('tableFigure') ?? false),
-      floatSpan:
-        ((ctx.editor?.getAttributes('figure').span ??
-          ctx.editor?.getAttributes('tableFigure').span) as string) ?? 'column',
-      tableInfo: ctx.editor ? getTableSelectionInfo(ctx.editor.state) : null,
-      floatHasNote: ctx.editor
-        ? floatAt(ctx.editor.state.selection.$from)?.node.lastChild?.type.name === 'floatNote'
-        : false,
-    }),
+    selector: (ctx) => {
+      const current = ctx.editor;
+      const headingLevel = current?.isActive('heading')
+        ? Number(current.getAttributes('heading').level) || null
+        : null;
+      return {
+        toolbar: {
+          isBold: current?.isActive('bold') ?? false,
+          isItalic: current?.isActive('italic') ?? false,
+          isUnderline: current?.isActive('underline') ?? false,
+          isStrikethrough: current?.isActive('strike') ?? false,
+          isCode: current?.isActive('code') ?? false,
+          isLink: current?.isActive('link') ?? false,
+          isBulletList: current?.isActive('bulletList') ?? false,
+          isOrderedList: current?.isActive('orderedList') ?? false,
+          headingLevel,
+          isHeading: headingLevel !== null,
+          isUnnumbered: current?.getAttributes('heading').unnumbered === true,
+          isInFloat:
+            (current?.isActive('figure') ?? false) || (current?.isActive('tableFigure') ?? false),
+          floatSpan:
+            ((current?.getAttributes('figure').span ??
+              current?.getAttributes('tableFigure').span) as string) ?? 'column',
+          floatHasNote: current
+            ? floatAt(current.state.selection.$from)?.node.lastChild?.type.name === 'floatNote'
+            : false,
+          hasSelection: current ? !current.state.selection.empty : false,
+          hasReferencesSection: current ? hasBibliography(current) : false,
+          hasRunningHead: current ? findRunningHead(current.state.doc) !== null : false,
+          canUndo: current?.can().undo() ?? false,
+          canRedo: current?.can().redo() ?? false,
+        } satisfies ToolbarState,
+        isCitation: current?.isActive('citation') ?? false,
+        citationKey: (current?.getAttributes('citation').citationKey as string) ?? '',
+        citationLocator: (current?.getAttributes('citation').locator as string) ?? '',
+        citationNarrative: current?.getAttributes('citation').narrative === true,
+        runningHead: current
+          ? (findRunningHead(current.state.doc)?.node.textContent ?? null)
+          : null,
+        tableInfo: current ? getTableSelectionInfo(current.state) : null,
+        // Floats in document order, for the outline and the cross-reference
+        // menu. Read here so they refresh with the document.
+        floats: current ? getFloats(current) : [],
+      };
+    },
   });
+
+  const { outline, currentSection } = useDocumentOutline(editor, templateSections);
 
   const applyLocator = useCallback(
     (value: string) => {
@@ -488,8 +621,140 @@ export default function TipTapEditor({
     [editor, onUploadImage]
   );
 
-  /** Floats in document order, for the cross-reference menu. */
-  const floats = editor ? getFloats(editor) : [];
+  const openCitePicker = useCallback(() => {
+    if (!editor) return;
+    setCitePicker(countCitations(editor.state.doc));
+  }, [editor]);
+
+  const closeCitePicker = useCallback(() => {
+    setCitePicker(null);
+    editor?.commands.focus();
+  }, [editor]);
+
+  /** Cites after the selection rather than over it, so selected text is kept. */
+  const insertCitation = useCallback(
+    (citationKey: string) => {
+      if (!editor) return;
+      editor
+        .chain()
+        .focus()
+        .setTextSelection(editor.state.selection.to)
+        .insertCitation(citationKey)
+        .run();
+      setCitePicker(null);
+    },
+    [editor]
+  );
+
+  const addComment = useCallback(() => {
+    if (!editor || editor.state.selection.empty) return;
+    editor.chain().focus().addPendingComment().run();
+  }, [editor]);
+
+  actionsRef.current = {
+    openCite: openCitePicker,
+    insertFigure: () => imageInputRef.current?.click(),
+    insertTable: () => setTableDialogOpen(true),
+    comment: addComment,
+    toggleOutline,
+  };
+
+  slashItemsRef.current = [
+    {
+      id: 'cite',
+      title: 'Citation',
+      group: 'Academic',
+      icon: BookMarked,
+      keywords: ['reference', 'source', 'bibliography'],
+      shortcut: shortcut('C', { shift: true }),
+      run: () => actionsRef.current.openCite(),
+    },
+    {
+      id: 'figure',
+      title: 'Figure',
+      group: 'Academic',
+      icon: ImageIcon,
+      keywords: ['image', 'picture', 'graph', 'fig'],
+      shortcut: shortcut('F', { shift: true }),
+      run: () => actionsRef.current.insertFigure(),
+    },
+    {
+      id: 'table',
+      title: 'Table',
+      group: 'Academic',
+      icon: TableIcon,
+      run: () => actionsRef.current.insertTable(),
+    },
+    {
+      id: 'references',
+      title: isMla ? 'Works Cited section' : 'References section',
+      group: 'Academic',
+      icon: BookMarked,
+      keywords: ['bibliography', 'works cited'],
+      run: (current) => current.chain().focus().insertReferencesSection().run(),
+    },
+    {
+      id: 'h1',
+      title: isApa ? 'Heading level 1' : 'Heading 1',
+      group: 'Text',
+      icon: Heading1,
+      keywords: ['title'],
+      run: (current) => current.chain().focus().setHeading({ level: 1 }).run(),
+    },
+    {
+      id: 'h2',
+      title: geometry.styleId === 'ieee' ? 'Section heading' : 'Heading 2',
+      group: 'Text',
+      icon: Heading2,
+      keywords: ['section'],
+      run: (current) => current.chain().focus().setHeading({ level: 2 }).run(),
+    },
+    {
+      id: 'h3',
+      title: geometry.styleId === 'ieee' ? 'Subsection heading' : 'Heading 3',
+      group: 'Text',
+      icon: Heading3,
+      keywords: ['subsection'],
+      run: (current) => current.chain().focus().setHeading({ level: 3 }).run(),
+    },
+    {
+      id: 'bullets',
+      title: 'Bulleted list',
+      group: 'Text',
+      icon: List,
+      run: (current) => current.chain().focus().toggleBulletList().run(),
+    },
+    {
+      id: 'numbers',
+      title: 'Numbered list',
+      group: 'Text',
+      icon: ListOrdered,
+      run: (current) => current.chain().focus().toggleOrderedList().run(),
+    },
+    {
+      id: 'quote',
+      title: 'Quote',
+      group: 'Text',
+      icon: Quote,
+      keywords: ['blockquote'],
+      run: (current) => current.chain().focus().toggleBlockquote().run(),
+    },
+    {
+      id: 'code',
+      title: 'Code block',
+      group: 'Text',
+      icon: Terminal,
+      run: (current) => current.chain().focus().toggleCodeBlock().run(),
+    },
+    {
+      id: 'pagebreak',
+      title: 'Page break',
+      group: 'Layout',
+      icon: SeparatorHorizontal,
+      shortcut: shortcut('↵'),
+      run: (current) => current.chain().focus().setPageBreak().run(),
+    },
+  ];
 
   const { threads } = useThreads({ query: { resolved: false } });
   const room = useRoom();
@@ -516,9 +781,55 @@ export default function TipTapEditor({
     }
   }, [threads, room, syncConvexComments]);
 
-  if (!editor) {
+  /** Scrolls a block to the top of the page area and puts the caret in it. */
+  const jumpTo = useCallback(
+    (pos: number) => {
+      if (!editor) return;
+      const dom = editor.view.nodeDOM(pos);
+      if (dom instanceof HTMLElement) {
+        dom.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      }
+      editor
+        .chain()
+        .focus(undefined, { scrollIntoView: false })
+        .setTextSelection(pos + 1)
+        .run();
+      if (!isWide) setOutlinePreference(false);
+    },
+    [editor, isWide]
+  );
+
+  const jumpToFloat = useCallback(
+    (floatId: string) => {
+      if (!editor) return;
+      let found: number | null = null;
+      editor.state.doc.descendants((node, pos) => {
+        if (found !== null) return false;
+        if (node.attrs.floatId === floatId) {
+          found = pos;
+          return false;
+        }
+        return true;
+      });
+      if (found !== null) jumpTo(found);
+    },
+    [editor, jumpTo]
+  );
+
+  if (!editor || !editorState) {
     return null;
   }
+
+  const {
+    toolbar,
+    isCitation,
+    citationKey,
+    citationLocator,
+    citationNarrative,
+    runningHead,
+    tableInfo,
+    floats,
+  } = editorState;
 
   const setLink = () => {
     const previousUrl = editor.getAttributes('link').href;
@@ -536,566 +847,245 @@ export default function TipTapEditor({
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   };
 
+  const warnings: StatusWarning[] = [];
+  if (uncitedFloats.length > 0) {
+    warnings.push({
+      id: 'uncited-floats',
+      text: `${uncitedFloats.map((float) => float.label).join(', ')} not cited`,
+      detail: isApa
+        ? 'APA Style expects every table and figure to be called out in the text before it appears.'
+        : isMla
+          ? 'MLA expects every table and figure to be referred to in the text, as in "(see fig. 1)".'
+          : 'IEEE expects every figure and table to be mentioned in the text. Insert › Cross-reference adds one.',
+    });
+  }
+  if (isApa && runningHead !== null && runningHead.length > RUNNING_HEAD_MAX) {
+    warnings.push({
+      id: 'running-head',
+      text: `Running head ${runningHead.length}/${RUNNING_HEAD_MAX}`,
+      detail: 'APA limits the running head to 50 characters, including spaces and punctuation.',
+    });
+  }
+
+  const citePickerNode = citePicker ? (
+    <CitePicker
+      references={references ?? []}
+      citedCounts={citePicker}
+      onPick={insertCitation}
+      onClose={closeCitePicker}
+      onOpenReferences={() => {
+        setCitePicker(null);
+        onOpenReferences?.();
+      }}
+    />
+  ) : null;
+
   return (
-    <div className="flex flex-col w-full rounded-lg border border-border bg-background shadow-xs">
-      {/* Control Bar for Editor Config */}
-      <div
-        className={`flex items-center justify-between px-4 py-2 border-b border-border bg-muted text-xs text-muted-foreground sticky transition-all duration-300 z-10 ${
-          isPageScrolled ? 'top-14' : 'top-24'
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="editable"
-            checked={isEditable}
-            onChange={() => setIsEditable(!isEditable)}
-            className="rounded border-border text-primary focus:ring-primary h-4 w-4"
-          />
-          <label
-            htmlFor="editable"
-            className="cursor-pointer font-medium select-none text-foreground"
-          >
-            Editable Mode
-          </label>
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* The figure picker, opened from the Insert menu, a slash command or ⌘⇧F. */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void handleInsertFigure(file);
+          // Cleared so choosing the same file twice still fires.
+          event.target.value = '';
+        }}
+        className="hidden"
+        aria-hidden="true"
+        tabIndex={-1}
+      />
 
-          <div className="w-px h-4 bg-border mx-1" />
+      <EditorMenuBar
+        editor={editor}
+        state={toolbar}
+        styleId={geometry.styleId}
+        isEditable={isEditable}
+        words={outline.totalWords}
+        isUploading={isUploading}
+        onInsertFigure={() => imageInputRef.current?.click()}
+        onInsertTable={() => setTableDialogOpen(true)}
+        tableInfo={tableInfo}
+        onSetLink={setLink}
+        floats={floats}
+        uncitedFloatIds={uncitedFloatIds}
+        onOpenCite={openCitePicker}
+        onComment={addComment}
+        isPaged={isPaged}
+        onPagedChange={setIsPaged}
+        outlineOpen={outlineVisible}
+        onToggleOutline={toggleOutline}
+        focusMode={focusMode}
+        onFocusModeChange={setFocusMode}
+        documentActions={documentActions}
+      />
 
-          <input
-            type="checkbox"
-            id="paged-view"
-            checked={isPaged}
-            onChange={() => setIsPaged(!isPaged)}
-            className="rounded border-border text-primary focus:ring-primary h-4 w-4"
-          />
-          <label
-            htmlFor="paged-view"
-            className="cursor-pointer font-medium select-none text-foreground"
-            title={isTwoColumn ? COLUMN_LAYOUT_NOTE : APPROXIMATE_LAYOUT_NOTE}
-          >
-            Page View
-          </label>
-        </div>
-        <div className="flex items-center gap-3">
-          <span>
-            Status:{' '}
-            <span className="font-semibold text-foreground">
-              {isEditable ? 'Editing' : 'Read-only'}
-            </span>
-          </span>
-          {isApa && runningHead !== null && runningHead.length > RUNNING_HEAD_MAX && (
-            <span
-              className="font-semibold text-amber-600"
-              title="APA limits the running head to 50 characters, including spaces and punctuation."
+      {isEditable && (
+        <EditorToolbar
+          editor={editor}
+          state={toolbar}
+          styleId={geometry.styleId}
+          isTwoColumn={isTwoColumn}
+          outlineOpen={outlineVisible}
+          onToggleOutline={toggleOutline}
+          isUploading={isUploading}
+          onInsertFigure={() => imageInputRef.current?.click()}
+          onInsertTable={() => setTableDialogOpen(true)}
+          onSetLink={setLink}
+          floats={floats}
+          uncitedFloatIds={uncitedFloatIds}
+          onOpenCite={openCitePicker}
+          citePicker={citePickerNode}
+          onComment={addComment}
+          tableToolbar={tableInfo ? <TableToolbar editor={editor} info={tableInfo} /> : undefined}
+        />
+      )}
+
+      <TableInsertDialog editor={editor} open={tableDialogOpen} onOpenChange={setTableDialogOpen} />
+
+      <div className="relative flex min-h-0 flex-1">
+        {outlineVisible && (
+          <>
+            {/* The scrim is a pointer convenience; ⌘\ and the toolbar close the outline too. */}
+            {!isWide && (
+              <div
+                aria-hidden="true"
+                onClick={toggleOutline}
+                className="absolute inset-0 z-20 bg-foreground/20"
+              />
+            )}
+            <aside
+              className={`flex w-64 shrink-0 flex-col border-r border-border bg-card ${
+                isWide ? '' : 'absolute inset-y-0 left-0 z-30 shadow-lg'
+              }`}
             >
-              Running head: {runningHead.length}/{RUNNING_HEAD_MAX} characters
-            </span>
-          )}
-          {isPaged && (
-            <span
-              className="font-semibold text-foreground cursor-help"
-              title={APPROXIMATE_LAYOUT_NOTE}
-            >
-              {geometry.label}
-              {isTwoColumn ? ' • 2 columns' : ''} • ~{pageCount}{' '}
-              {pageCount === 1 ? 'page' : 'pages'}
-            </span>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handlePrint}
-            title="Print document content"
-            className="h-7 px-2.5 text-xs font-semibold gap-1.5"
+              <DocumentOutline
+                outline={outline}
+                currentSection={currentSection}
+                floats={floats}
+                uncitedFloatIds={uncitedFloatIds}
+                citedCount={citedCount}
+                onJumpToSection={jumpTo}
+                onJumpToFloat={jumpToFloat}
+              />
+            </aside>
+          </>
+        )}
+
+        {/* The page. Both modes render the same element structure so that
+            toggling only swaps classes: remounting <EditorContent> would tear
+            the ProseMirror DOM out of the page and drop the caret. */}
+        <main
+          id="document"
+          aria-label="Document"
+          tabIndex={-1}
+          className={`min-w-0 flex-1 overflow-auto outline-none ${
+            geometry.styleId === 'ieee' ? 'doc-ieee ' : ''
+          }${isApa ? 'doc-apa ' : ''}${isMla ? 'doc-mla ' : ''}${
+            geometry.styleId === 'default' ? 'doc-default ' : ''
+          }${isPaged ? 'page-canvas-backdrop' : 'continuous-backdrop'}`}
+        >
+          <div
+            className={
+              isPaged
+                ? `page-canvas${isTwoColumn ? ' page-canvas--columns' : ''}`
+                : 'continuous-sheet'
+            }
+            style={isPaged ? canvasStyle : undefined}
           >
-            <Printer className="h-3.5 w-3.5" />
-            Print
-          </Button>
-        </div>
+            <EditorContent editor={editor} />
+            {isPaged &&
+              Array.from({ length: pageCount }, (_, index) => (
+                <div
+                  key={`page-${index + 1}`}
+                  className="page-canvas__label"
+                  style={{ top: index * pagePeriodPx + geometry.pageHeightPx + 6 }}
+                >
+                  Page {index + 1} of {pageCount}
+                </div>
+              ))}
+            {/* The page number in the header, top right, where APA and MLA put
+                it on every page including the first. Drawn over the page rather
+                than written into it, since which page a line lands on is a
+                measurement, not content. MLA puts the author's last name before
+                it: page one shows the editable block itself beside the number,
+                and every later page repeats the name here. */}
+            {isPaged &&
+              geometry.pageNumbers &&
+              Array.from({ length: pageCount }, (_, index) => (
+                <div
+                  key={`page-number-${index + 1}`}
+                  className="page-canvas__number"
+                  style={{
+                    top: index * pagePeriodPx + geometry.margin.top / 2,
+                    right: geometry.margin.right,
+                    fontSize: geometry.bodyFontPx,
+                  }}
+                  aria-hidden="true"
+                >
+                  {isMla && index > 0 && runningHead ? `${runningHead} ${index + 1}` : index + 1}
+                </div>
+              ))}
+            {/* The running head repeated in the header of every page after the
+                first; page one shows the editable block itself. */}
+            {isPaged &&
+              isApa &&
+              runningHead &&
+              Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => (
+                <div
+                  key={`running-head-${index + 2}`}
+                  className="page-canvas__number page-canvas__running-head"
+                  style={{
+                    top: (index + 1) * pagePeriodPx + geometry.margin.top / 2,
+                    left: geometry.margin.left,
+                    right: geometry.margin.right + geometry.bodyFontPx * 3,
+                    fontSize: geometry.bodyFontPx,
+                  }}
+                  aria-hidden="true"
+                >
+                  {runningHead}
+                </div>
+              ))}
+          </div>
+        </main>
+
+        {!focusMode && panel}
+        {!focusMode && rail}
       </div>
 
-      {/* Editor Toolbar */}
-      {isEditable && (
-        <div
-          className={`flex flex-wrap gap-1 p-2 border-b border-border bg-muted items-center justify-between sticky transition-all duration-300 z-20 ${
-            isPageScrolled ? 'top-[88px]' : 'top-[128px]'
-          }`}
-        >
-          <div className="flex flex-wrap items-center gap-1">
-            {/* Inline styles */}
-            <Button
-              type="button"
-              variant={isBold ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleBold().run()}
-              title="Bold"
-            >
-              <Bold className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant={isItalic ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-              title="Italic"
-            >
-              <Italic className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant={isUnderline ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-              title="Underline"
-            >
-              <UnderlineIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant={isStrikethrough ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleStrike().run()}
-              title="Strikethrough"
-            >
-              <Strikethrough className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant={isCode ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleCode().run()}
-              title="Code"
-            >
-              <Code className="h-4 w-4" />
-            </Button>
-
-            <div className="w-px h-5 bg-border mx-1 self-center" />
-
-            {/* Headings */}
-            <Button
-              type="button"
-              variant={editor.isActive('heading', { level: 1 }) ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-              title={
-                isApa
-                  ? 'APA Level 1 — centred, bold'
-                  : isMla
-                    ? 'Title or Works Cited — centred, plain'
-                    : 'Heading 1'
-              }
-            >
-              <Heading1 className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant={editor.isActive('heading', { level: 2 }) ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-              title={
-                isApa
-                  ? 'APA Level 2 — flush left, bold'
-                  : isMla
-                    ? 'MLA section heading — flush left, bold'
-                    : 'Heading 2'
-              }
-            >
-              <Heading2 className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant={editor.isActive('heading', { level: 3 }) ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-              title={
-                isApa
-                  ? 'APA Level 3 — flush left, bold italic'
-                  : isMla
-                    ? 'MLA subheading — flush left, italic'
-                    : 'Heading 3'
-              }
-            >
-              <Heading3 className="h-4 w-4" />
-            </Button>
-            {/* APA's run-in levels. The text after the heading continues on
-                the same line, so the heading should end with a period. */}
-            {isApa && (
-              <>
-                <Button
-                  type="button"
-                  variant={editor.isActive('heading', { level: 4 }) ? 'secondary' : 'ghost'}
-                  size="icon-xs"
-                  onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}
-                  title="APA Level 4 — indented, bold, ending with a period; the paragraph runs on"
-                >
-                  <Heading4 className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant={editor.isActive('heading', { level: 5 }) ? 'secondary' : 'ghost'}
-                  size="icon-xs"
-                  onClick={() => editor.chain().focus().toggleHeading({ level: 5 }).run()}
-                  title="APA Level 5 — indented, bold italic, ending with a period; the paragraph runs on"
-                >
-                  <Heading5 className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-            <Button
-              type="button"
-              variant={
-                editor.isActive('paragraph') && !editor.isActive('heading') ? 'secondary' : 'ghost'
-              }
-              size="icon-xs"
-              onClick={() => editor.chain().focus().setParagraph().run()}
-              title="Paragraph Text"
-            >
-              <Type className="h-4 w-4" />
-            </Button>
-            {/* Numbering only means anything in a format that numbers its
-                sections, so the control appears only there. */}
-            {isHeading && geometry.styleId === 'ieee' && (
-              <Button
-                type="button"
-                variant={isUnnumbered ? 'ghost' : 'secondary'}
-                size="icon-xs"
-                onClick={() =>
-                  editor
-                    .chain()
-                    .focus()
-                    .updateAttributes('heading', { unnumbered: !isUnnumbered })
-                    .run()
-                }
-                title={
-                  isUnnumbered
-                    ? 'Number this section (I, II, III…)'
-                    : 'Leave this section unnumbered, like Acknowledgment and References'
-                }
-              >
-                <Hash className="h-4 w-4" />
-              </Button>
-            )}
-
-            <div className="w-px h-5 bg-border mx-1 self-center" />
-
-            {/* Lists */}
-            <Button
-              type="button"
-              variant={editor.isActive('bulletList') ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleBulletList().run()}
-              title="Bullet List"
-            >
-              <List className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant={editor.isActive('orderedList') ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleOrderedList().run()}
-              title="Numbered List"
-            >
-              <ListOrdered className="h-4 w-4" />
-            </Button>
-
-            <div className="w-px h-5 bg-border mx-1 self-center" />
-
-            {/* Hyperlinks */}
-            <Button
-              type="button"
-              variant={editor.isActive('link') ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={setLink}
-              title="Hyperlink"
-            >
-              <Link2 className="h-4 w-4" />
-            </Button>
-            {editor.isActive('link') && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => editor.chain().focus().unsetLink().run()}
-                title="Unlink"
-                className="text-destructive hover:bg-destructive/10"
-              >
-                <Unlink className="h-4 w-4" />
-              </Button>
-            )}
-
-            <div className="w-px h-5 bg-border mx-1 self-center" />
-
-            {/* Formatting items */}
-            <Button
-              type="button"
-              variant={editor.isActive('blockquote') ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleBlockquote().run()}
-              title="Blockquote"
-            >
-              <Quote className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant={editor.isActive('codeBlock') ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-              title="Code Block"
-            >
-              <Terminal className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => editor.chain().focus().setPageBreak().run()}
-              title="Insert page break (Ctrl/Cmd + Enter)"
-            >
-              <SeparatorHorizontal className="h-4 w-4" />
-            </Button>
-
-            <div className="w-px h-5 bg-border mx-1 self-center" />
-
-            {/* Figures and tables. Both are inserted with a caption already
-                attached, because IEEE has no such thing as an uncaptioned
-                float and an empty caption is easier to fill in than to
-                remember to add. */}
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void handleInsertFigure(file);
-                // Cleared so choosing the same file twice still fires.
-                event.target.value = '';
-              }}
-              className="hidden"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              disabled={isUploading}
-              onClick={() => imageInputRef.current?.click()}
-              title={
-                isApa
-                  ? 'Insert a figure — labelled Figure N, with its title above the image'
-                  : 'Insert a figure — an image or a graph, captioned Fig. N. below'
-              }
-            >
-              {isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <ImageIcon className="h-4 w-4" />
-              )}
-            </Button>
-            <TableInsertMenu editor={editor} />
-
-            {/* Cross-references. Every figure and table has to be mentioned in
-                the prose, and a reference inserted here renumbers itself when
-                the paper is reordered, which a typed "Fig. 1" does not. */}
-            <div className="relative">
-              <Button
-                type="button"
-                variant={uncitedFloats.length > 0 ? 'secondary' : 'ghost'}
-                size="icon-xs"
-                disabled={floats.length === 0}
-                onClick={() => setFloatMenuOpen((open) => !open)}
-                aria-expanded={floatMenuOpen}
-                title={
-                  floats.length === 0
-                    ? 'No figures or tables to refer to yet'
-                    : uncitedFloats.length > 0
-                      ? `Refer to a figure or table — ${uncitedFloats.length} not yet mentioned in the text`
-                      : 'Refer to a figure or table in the text'
-                }
-              >
-                <Link2Icon className="h-4 w-4" />
-              </Button>
-
-              {floatMenuOpen && floats.length > 0 && (
-                <div className="absolute left-0 top-full z-30 mt-1 w-64 overflow-hidden rounded-lg border border-border bg-background shadow-md">
-                  <ul className="max-h-56 overflow-y-auto">
-                    {floats.map((float) => {
-                      const isUncited = uncitedFloats.some((item) => item.id === float.id);
-                      return (
-                        <li key={float.id}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              editor.chain().focus().insertCrossReference(float.id).run();
-                              setFloatMenuOpen(false);
-                            }}
-                            className="flex w-full items-baseline gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-muted"
-                          >
-                            <span className="shrink-0 font-semibold">{float.label}</span>
-                            <span className="truncate text-[10px] text-muted-foreground">
-                              {float.caption || 'No caption yet'}
-                            </span>
-                            {isUncited && (
-                              <span
-                                className="ml-auto shrink-0 text-[9px] font-bold text-amber-600"
-                                title="Not yet mentioned in the text"
-                              >
-                                !
-                              </span>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {uncitedFloats.length > 0 && (
-                    <p className="border-t border-border bg-muted/40 px-2.5 py-1.5 text-[10px] leading-snug text-muted-foreground">
-                      {isApa
-                        ? 'APA Style expects every table and figure to be called out in the text before it appears.'
-                        : isMla
-                          ? 'MLA expects every table and figure to be referred to in the text, as in "(see fig. 1)".'
-                          : 'IEEE expects every figure and table to be mentioned in the text.'}{' '}
-                      Those marked ! are not yet.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* How wide the float is set. Only meaningful in a format with
-                more than one column, which is where spanning both means
-                anything at all. */}
-            {isTwoColumn && isInFloat && (
-              <Button
-                type="button"
-                variant={floatSpan === 'page' ? 'secondary' : 'ghost'}
-                size="icon-xs"
-                onClick={() =>
-                  editor
-                    .chain()
-                    .focus()
-                    .setFloatSpan(floatSpan === 'page' ? 'column' : 'page')
-                    .run()
-                }
-                title={
-                  floatSpan === 'page'
-                    ? 'Set this float in one column'
-                    : 'Span this float across both columns (takes effect on paper; Page View still previews it one column wide)'
-                }
-              >
-                <Columns2 className="h-4 w-4" />
-              </Button>
-            )}
-
-            {/* A note under the table or figure: APA's "Note. …". */}
-            {isInFloat && (
-              <Button
-                type="button"
-                variant={floatHasNote ? 'secondary' : 'ghost'}
-                size="icon-xs"
-                onClick={() => editor.chain().focus().toggleFloatNote().run()}
-                title={
-                  floatHasNote
-                    ? 'Remove the note under this float'
-                    : 'Add a note under this float ("Note. …")'
-                }
-              >
-                <MessageSquareText className="h-4 w-4" />
-              </Button>
-            )}
-
-            {/* The running head: required on a professional APA paper, and
-                added to a student paper only when the instructor asks. */}
-            {/* MLA's page header is the author's last name beside the page
-                number, top right of every page. */}
-            {(isApa || isMla) && (
-              <Button
-                type="button"
-                variant={runningHead !== null ? 'secondary' : 'ghost'}
-                size="icon-xs"
-                onClick={() =>
-                  editor
-                    .chain()
-                    .focus()
-                    .insertRunningHead(isMla ? 'Last Name' : undefined)
-                    .run()
-                }
-                title={
-                  isMla
-                    ? runningHead !== null
-                      ? 'Edit the page header (your last name, before the page number, top right of every page)'
-                      : 'Add the page header: your last name before the page number, top right of every page'
-                    : runningHead !== null
-                      ? 'Edit the running head (top left of every page, in capitals)'
-                      : 'Add a running head: a shortened title, top left of every page'
-                }
-              >
-                <PanelTop className="h-4 w-4" />
-              </Button>
-            )}
-
-            <div className="w-px h-5 bg-border mx-1 self-center" />
-
-            {/* The References section. Its entries are drawn from the
-                bibliography rather than typed, so this inserts the section
-                once and the list keeps itself in step from then on. */}
-            <Button
-              type="button"
-              variant={hasReferencesSection ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().insertReferencesSection().run()}
-              title={
-                hasReferencesSection
-                  ? 'Go to the References section'
-                  : isApa
-                    ? 'Add a References section on a new page, listed alphabetically by author'
-                    : isMla
-                      ? 'Add a Works Cited list on a new page, listed alphabetically by author'
-                      : 'Add a References section, numbered in the order the text cites each source'
-              }
-            >
-              <BookMarked className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* History Actions */}
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              disabled={!editor.can().undo()}
-              onClick={() => editor.chain().focus().undo().run()}
-              title="Undo"
-            >
-              <Undo2 className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              disabled={!editor.can().redo()}
-              onClick={() => editor.chain().focus().redo().run()}
-              title="Redo"
-            >
-              <Redo2 className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Shown while the caret is in a table, on a line of its own. */}
-          {tableInfo && <TableToolbar editor={editor} info={tableInfo} />}
-        </div>
-      )}
+      <EditorStatusBar
+        sectionTitle={currentSection?.title ?? null}
+        words={outline.totalWords}
+        pageSummary={
+          isPaged
+            ? `${geometry.label}${isTwoColumn ? ' · 2 columns' : ''} · ~${pageCount} ${
+                pageCount === 1 ? 'page' : 'pages'
+              }`
+            : null
+        }
+        pageNote={
+          isTwoColumn ? `${COLUMN_LAYOUT_NOTE} ${APPROXIMATE_LAYOUT_NOTE}` : APPROXIMATE_LAYOUT_NOTE
+        }
+        citationStyleLabel={CITATION_STYLE_LABELS[citationStyle]}
+        warnings={warnings}
+        isPaged={isPaged}
+        onPagedChange={setIsPaged}
+        isEditable={isEditable}
+        onEditableChange={setIsEditable}
+      />
 
       {/* A selected citation gets its own menu: the only thing worth editing
           on one is the locator IEEE prints inside the brackets. */}
-      {editor && isEditable && isCitation && (
+      {isEditable && isCitation && (
         <BubbleMenu
           editor={editor}
           pluginKey="citationBubble"
           options={{ placement: 'top', offset: 8 }}
         >
-          <div className="flex items-center gap-1.5 rounded-md border border-border bg-background p-1.5 shadow-md">
-            <span className="text-[10px] font-mono text-muted-foreground pl-0.5">
+          <div className="flex items-center gap-1.5 rounded-md border border-border bg-popover p-1.5 shadow-md">
+            <span className="pl-0.5 font-mono text-xs text-muted-foreground">
               {citationKey || 'citation'}
             </span>
             {/* Author–date styles only: whether the author is named in the
@@ -1107,6 +1097,12 @@ export default function TipTapEditor({
                 size="icon-xs"
                 onClick={() =>
                   editor.chain().focus().setCitationNarrative(!citationNarrative).run()
+                }
+                aria-pressed={citationNarrative}
+                aria-label={
+                  citationNarrative
+                    ? 'Narrative: Smith (2020). Switch to parenthetical: (Smith, 2020)'
+                    : 'Parenthetical: (Smith, 2020). Switch to narrative: Smith (2020)'
                 }
                 title={
                   citationNarrative
@@ -1131,7 +1127,7 @@ export default function TipTapEditor({
               onBlur={(event) => applyLocator(event.currentTarget.value)}
               placeholder="p. 13"
               aria-label="Page or section for this citation, e.g. p. 13"
-              className="h-6 w-24 rounded border border-border bg-background px-1.5 text-[11px] outline-none focus:border-primary"
+              className="h-7 w-24 rounded border border-border bg-background px-1.5 text-xs outline-none focus:border-primary"
             />
             {citationLocator && (
               <Button
@@ -1139,6 +1135,7 @@ export default function TipTapEditor({
                 variant="ghost"
                 size="icon-xs"
                 onClick={() => applyLocator('')}
+                aria-label="Remove the page reference"
                 title="Remove the page reference"
               >
                 <Unlink className="h-3 w-3" />
@@ -1148,134 +1145,49 @@ export default function TipTapEditor({
         </BubbleMenu>
       )}
 
-      {/* Bubble Menu for Inline text highlighting / editing */}
-      {editor && isEditable && !isCitation && (
-        <BubbleMenu editor={editor} options={{ placement: 'top', offset: 8 }}>
-          <div className="flex items-center gap-0.5 rounded-md border border-border bg-background p-1 shadow-md">
-            <Button
-              type="button"
-              variant={isBold ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleBold().run()}
-            >
-              <Bold className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant={isItalic ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-            >
-              <Italic className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant={isUnderline ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-            >
-              <UnderlineIcon className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant={editor.isActive('link') ? 'secondary' : 'ghost'}
-              size="icon-xs"
-              onClick={setLink}
-            >
-              <Link2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </BubbleMenu>
-      )}
-
-      {/* Editor Area.
-          Both modes render the same element structure so that toggling only
-          swaps classes. Remounting <EditorContent> would tear the ProseMirror
-          DOM out of the page and drop the caret. */}
-      <div
-        className={`${geometry.styleId === 'ieee' ? 'doc-ieee ' : ''}${isApa ? 'doc-apa ' : ''}${
-          isMla ? 'doc-mla ' : ''
-        }${isPaged ? 'page-canvas-backdrop' : 'bg-background w-full rounded-b-lg'}`}
-      >
-        <div
-          className={
-            isPaged
-              ? `page-canvas${isTwoColumn ? ' page-canvas--columns' : ''}`
-              : 'prose max-w-none min-h-[450px] p-4'
-          }
-          style={isPaged ? canvasStyle : undefined}
-        >
-          <EditorContent editor={editor} />
-          {isPaged &&
-            Array.from({ length: pageCount }, (_, index) => (
-              <div
-                key={`page-${index + 1}`}
-                className="page-canvas__label"
-                style={{ top: index * pagePeriodPx + geometry.pageHeightPx + 6 }}
-              >
-                Page {index + 1} of {pageCount}
-              </div>
-            ))}
-          {/* The page number in the header, top right, where APA and MLA put
-              it on every page including the first. Drawn over the page rather
-              than written into it, since which page a line lands on is a
-              measurement, not content. MLA puts the author's last name before
-              it: page one shows the editable block itself beside the number,
-              and every later page repeats the name here. */}
-          {isPaged &&
-            geometry.pageNumbers &&
-            Array.from({ length: pageCount }, (_, index) => (
-              <div
-                key={`page-number-${index + 1}`}
-                className="page-canvas__number"
-                style={{
-                  top: index * pagePeriodPx + geometry.margin.top / 2,
-                  right: geometry.margin.right,
-                  fontSize: geometry.bodyFontPx,
-                }}
-                aria-hidden="true"
-              >
-                {isMla && index > 0 && runningHead ? `${runningHead} ${index + 1}` : index + 1}
-              </div>
-            ))}
-          {/* The running head repeated in the header of every page after the
-              first; page one shows the editable block itself. */}
-          {isPaged &&
-            isApa &&
-            runningHead &&
-            Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) => (
-              <div
-                key={`running-head-${index + 2}`}
-                className="page-canvas__number page-canvas__running-head"
-                style={{
-                  top: (index + 1) * pagePeriodPx + geometry.margin.top / 2,
-                  left: geometry.margin.left,
-                  right: geometry.margin.right + geometry.bodyFontPx * 3,
-                  fontSize: geometry.bodyFontPx,
-                }}
-                aria-hidden="true"
-              >
-                {runningHead}
-              </div>
-            ))}
-        </div>
-      </div>
-
-      {/* Floating UI Elements */}
+      {/* The selection toolbar: format, comment or cite right at the text. */}
       <FloatingToolbar
         editor={editor}
-        className="bg-background border border-border shadow-md rounded-lg p-1.5 flex gap-1 items-center z-50 animate-in fade-in zoom-in-95 duration-100"
+        className="z-50 flex items-center gap-0.5 rounded-lg border border-border bg-popover p-1 shadow-md"
       >
         <Button
           type="button"
-          variant="ghost"
-          size="icon-xs"
-          onClick={() => editor.commands.addPendingComment()}
-          title="Add Comment"
-          className="text-primary hover:bg-primary/10 h-7 px-2.5 flex items-center gap-1.5 text-xs font-bold transition-all rounded-md"
+          variant={toolbar.isBold ? 'secondary' : 'ghost'}
+          size="icon-sm"
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          aria-label="Bold"
+          aria-pressed={toolbar.isBold}
         >
-          <Quote className="h-3.5 w-3.5" />
+          <Bold />
+        </Button>
+        <Button
+          type="button"
+          variant={toolbar.isItalic ? 'secondary' : 'ghost'}
+          size="icon-sm"
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          aria-label="Italic"
+          aria-pressed={toolbar.isItalic}
+        >
+          <Italic />
+        </Button>
+        <Button
+          type="button"
+          variant={toolbar.isLink ? 'secondary' : 'ghost'}
+          size="icon-sm"
+          onClick={setLink}
+          aria-label="Link"
+          aria-pressed={toolbar.isLink}
+        >
+          <Link2 />
+        </Button>
+        <div aria-hidden="true" className="mx-0.5 h-5 w-px bg-border" />
+        <Button type="button" variant="ghost" size="sm" onClick={addComment}>
+          <MessageSquarePlus />
           Comment
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={openCitePicker}>
+          <span className="font-mono text-xs">[1]</span>
+          Cite
         </Button>
       </FloatingToolbar>
       <FloatingThreads editor={editor} threads={threads} className="floating-threads" />
