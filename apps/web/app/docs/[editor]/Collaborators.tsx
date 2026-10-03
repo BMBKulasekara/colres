@@ -10,7 +10,7 @@ export function Collaborators() {
   const allCollaborators = [...(self ? [self] : []), ...others];
 
   return (
-    <div className="flex items-center -space-x-1.5 mr-2">
+    <div className="flex items-center -space-x-1.5">
       {allCollaborators.map((user) => {
         const color = (user.info as any)?.color || '#ccc';
         const name = (user.info as any)?.name || 'Anonymous';
@@ -37,7 +37,7 @@ export function Collaborators() {
                 className="h-full w-full rounded-full object-cover"
               />
             ) : (
-              <div className="h-full w-full rounded-full bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground">
+              <div className="h-full w-full rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">
                 {name.slice(0, 2).toUpperCase()}
               </div>
             )}

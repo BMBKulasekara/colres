@@ -10,7 +10,8 @@
     "./_generated/dataModel": "./convex/_generated/dataModel.d.ts",
     "./chat/attachments": "./convex/lib/chatAttachments.ts",
     "./chat/mentions": "./convex/lib/chatMentions.ts",
-    "./templates/catalog": "./convex/lib/templateCatalog.ts"
+    "./templates/catalog": "./convex/lib/templateCatalog.ts",
+    "./trash/policy": "./convex/lib/trashPolicy.ts"
   },
   "scripts": {
     "dev": "convex dev",

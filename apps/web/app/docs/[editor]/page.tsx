@@ -3,8 +3,7 @@
 import { useThreads } from '@liveblocks/react/suspense';
 import { Thread } from '@liveblocks/react-ui';
 import { api } from '@repo/convex/_generated/api';
-import type { Id } from '@repo/convex/_generated/dataModel';
-import { useIsMobile } from '@repo/ui/components/hooks/use-mobile';
+import type { Doc, Id } from '@repo/convex/_generated/dataModel';
 import { Button } from '@repo/ui/components/ui/button';
 import {
   Drawer,
@@ -12,23 +11,40 @@ import {
   DrawerDescription,
   DrawerHeader,
   DrawerTitle,
-  DrawerTrigger,
 } from '@repo/ui/components/ui/drawer';
 import { useMutation, useQuery } from 'convex/react';
-import { BookOpen, Check, Loader, MessageSquare } from 'lucide-react';
+import { FileQuestion, Loader2, MessageSquare } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Chat } from '../../../components/Chat';
 import { ContributionsPanel } from '../../../components/ContributionsPanel';
 import { ChatToasts } from '../../../components/chat/ChatToast';
-import { UnreadBadge, unreadLabel } from '../../../components/chat/UnreadBadge';
+import { unreadLabel } from '../../../components/chat/UnreadBadge';
 import { useChatNotifications } from '../../../components/chat/useChatNotifications';
+import { EditorHeader } from '../../../components/editor/EditorHeader';
+import {
+  PANELS,
+  type PanelBadge,
+  type PanelId,
+  PanelRail,
+  SidePanelFrame,
+} from '../../../components/editor/SidePanel';
+import { useAutosave } from '../../../components/editor/useAutosave';
+import { useMediaQuery } from '../../../components/editor/useMediaQuery';
 import { ReferencesPanel } from '../../../components/ReferencesPanel';
 import { ResearchPanel } from '../../../components/ResearchPanel';
 import Tiptap from '../../../components/TipTap';
+import { CreateDocumentWizard } from '../../../components/templates/CreateDocumentWizard';
+import { getCitationOrder } from '../../../components/tiptap/CitationNumbering';
+import { printDocument } from '../../../components/tiptap/printDocument';
 import type { CitationStyle } from '../../../lib/citationFormat';
-import { Collaborators } from './Collaborators';
+import { type DocumentStatus, documentStatus, statusValue } from '../../../lib/documentStatus';
+import { getPageGeometry } from '../../../lib/pageGeometry';
+import { useNotificationSettings } from '../../../lib/useNotificationSettings';
 import { Room } from './Room';
+
+/** Which side panel was open last, so ⌘/ and a reload bring it back. */
+const PANEL_STORAGE_KEY = 'colres:editor:panel';
 
 export default function Editor() {
   const params = useParams();
@@ -41,25 +57,24 @@ export default function Editor() {
 
   if (docs === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-muted/10">
-        <div className="flex flex-col items-center gap-4">
-          <Loader className="animate-spin" />
-          <span className="text-sm font-semibold text-muted-foreground animate-pulse">
-            Loading document...
-          </span>
-        </div>
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <output className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          Loading document…
+        </output>
       </div>
     );
   }
 
   if (docs === null) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-muted/10 gap-4">
-        <h1 className="text-2xl font-bold text-foreground">Document not found</h1>
-        <p className="text-muted-foreground text-sm">
-          The document you are looking for does not exist or has been deleted.
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+        <FileQuestion className="size-8 text-muted-foreground" aria-hidden="true" />
+        <h1 className="text-2xl font-semibold text-foreground">Document not found</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          It may have been deleted, or you may not have access to it.
         </p>
-        <Button onClick={() => router.push('/docs')}>Back to Documents</Button>
+        <Button onClick={() => router.push('/docs')}>Back to documents</Button>
       </div>
     );
   }
@@ -71,10 +86,6 @@ export default function Editor() {
   );
 }
 
-interface EditorContentProps {
-  docs: any;
-}
-
 function CommentsList() {
   const { threads } = useThreads({ query: { resolved: false } });
 
@@ -83,50 +94,85 @@ function CommentsList() {
       {threads.length > 0 ? (
         threads.map((thread) => <Thread key={thread.id} thread={thread} />)
       ) : (
-        <div className="text-center p-6 text-muted-foreground text-xs">
-          No comments yet. Highlight text in the editor to add a comment!
+        <div className="flex flex-col items-center gap-2 p-6 text-center text-sm text-muted-foreground">
+          <MessageSquare className="size-5" aria-hidden="true" />
+          No open comments. Select text in the document and choose Comment to start a thread.
         </div>
       )}
     </div>
   );
 }
 
-function EditorContent({ docs }: EditorContentProps) {
+function EditorContent({ docs }: { docs: Doc<'documents'> }) {
+  const router = useRouter();
   const [title, setTitle] = useState(docs.title);
-  const [content, setContent] = useState(docs.content);
-  const [isScrolled, setIsScrolled] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'unsaved' | 'saving'>('saved');
-  const [activeTab, setActiveTab] = useState<'comments' | 'chat'>('comments');
-  const [researchTab, setResearchTab] = useState<'research' | 'references' | 'contributions'>(
-    'research'
-  );
-
-  // Both drawers are controlled, so that a chat notification can open the
-  // collaboration panel on the right tab rather than only pointing at it.
-  const [isCollabOpen, setIsCollabOpen] = useState(false);
-  const [isResearchOpen, setIsResearchOpen] = useState(false);
-
   const [editorInstance, setEditorInstance] = useState<any>(null);
-  const isMobile = useIsMobile();
+
+  /** The latest HTML this browser has seen, for "Download copy". */
+  const latestHtmlRef = useRef(docs.content);
+
+  const [activePanel, setActivePanel] = useState<PanelId | null>(null);
+  const lastPanelRef = useRef<PanelId>('references');
+
+  // Wide enough to dock the panel beside the page; narrower screens get the
+  // same panel as a sheet over it.
+  const canDockPanel = useMediaQuery('(min-width: 1024px)');
+  const isMobile = !useMediaQuery('(min-width: 768px)');
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(PANEL_STORAGE_KEY);
+      if (stored && PANELS.some((panel) => panel.id === stored)) {
+        lastPanelRef.current = stored as PanelId;
+        // Reopened on wide screens only; on a phone it would cover the page.
+        if (window.matchMedia('(min-width: 1024px)').matches) {
+          setActivePanel(stored as PanelId);
+        }
+      }
+    } catch {
+      // No stored panel; start with none open.
+    }
+  }, []);
+
+  const selectPanel = useCallback((panel: PanelId | null) => {
+    setActivePanel(panel);
+    if (panel) lastPanelRef.current = panel;
+    try {
+      if (panel) window.localStorage.setItem(PANEL_STORAGE_KEY, panel);
+      else window.localStorage.removeItem(PANEL_STORAGE_KEY);
+    } catch {
+      // Not remembering it is fine.
+    }
+  }, []);
 
   /**
    * The unread badge and the new-message notifications.
    *
    * Driven from here rather than from inside the chat, because the whole point
-   * of both is the time when the chat is not on screen. The chat counts as
-   * visible only when its drawer is open *and* its tab is the one showing.
+   * of both is the time when the chat is not on screen.
    */
+  // Focus mode hides the docked panel without closing it, and a background
+  // tab shows nothing at all; in neither case has anyone read the messages.
+  const [focusMode, setFocusMode] = useState(false);
+  const [isTabVisible, setIsTabVisible] = useState(true);
+
+  useEffect(() => {
+    const onVisibilityChange = () => setIsTabVisible(document.visibilityState === 'visible');
+    onVisibilityChange();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
+  const isChatVisible = activePanel === 'chat' && isTabVisible && !(focusMode && canDockPanel);
+
   const { unreadCount, mentionsMe, toasts, dismissToast } = useChatNotifications(
     docs._id,
-    isCollabOpen && activeTab === 'chat'
+    isChatVisible
   );
 
-  const openChat = useCallback(() => {
-    setActiveTab('chat');
-    setIsCollabOpen(true);
-  }, []);
+  const openChat = useCallback(() => selectPanel('chat'), [selectPanel]);
+
+  const { threads } = useThreads({ query: { resolved: false } });
 
   /**
    * Stores a figure's image and hands back a URL to serve it from.
@@ -152,7 +198,9 @@ function EditorContent({ docs }: EditorContentProps) {
         throw new Error(`${file.name} could not be uploaded.`);
       }
 
-      const { storageId } = (await response.json()) as { storageId: Id<'_storage'> };
+      const { storageId } = (await response.json()) as {
+        storageId: Id<'_storage'>;
+      };
 
       // The storage id is not itself fetchable; a served URL has to be asked
       // for, and only the server can mint one.
@@ -168,6 +216,13 @@ function EditorContent({ docs }: EditorContentProps) {
   const updateDoc = useMutation(api.documents.updateDocument);
   const setDocumentCitationStyle = useMutation(api.documents.setCitationStyle);
 
+  const {
+    state: saveState,
+    lastSavedAt,
+    schedule: scheduleSave,
+    flush: flushSave,
+  } = useAutosave((patch) => updateDoc({ id: docs._id, ...patch }));
+
   /**
    * The style the document's citations and reference list are set in: the one
    * chosen in the References panel, else the one its template came with.
@@ -178,7 +233,23 @@ function EditorContent({ docs }: EditorContentProps) {
   // The bibliography is read here rather than only inside the references
   // panel, because the editor needs it too: a citation can only be numbered
   // once its key is known to be in the bibliography.
-  const references = useQuery(api.references.listReferences, { documentId: docs._id });
+  const references = useQuery(api.references.listReferences, {
+    documentId: docs._id,
+  });
+
+  // The template's sections, for the outline's word budgets. The snapshot on
+  // the document keeps the compilation contract only, so they are read from
+  // the template itself.
+  const template = useQuery(
+    api.templates.getTemplateById,
+    docs.templateId ? { id: docs.templateId } : 'skip'
+  );
+
+  const geometry = useMemo(
+    () =>
+      getPageGeometry(docs.templateSnapshot?.classOptions, docs.templateSnapshot?.documentClass),
+    [docs.templateSnapshot?.classOptions, docs.templateSnapshot?.documentClass]
+  );
 
   /**
    * Citation keys in the order the document first cites them, reported by the
@@ -190,336 +261,264 @@ function EditorContent({ docs }: EditorContentProps) {
   /**
    * Whether the document already has a References section, read off the
    * content the editor reports rather than by reaching into ProseMirror: the
-   * section serialises to `<div data-bibliography>`, and `content` is kept in
-   * step by the editor's own change handler.
+   * section serialises to `<div data-bibliography>`.
    */
-  const hasReferencesSection = (content ?? '').includes('data-bibliography');
+  const [hasReferencesSection, setHasReferencesSection] = useState(
+    (docs.content ?? '').includes('data-bibliography')
+  );
 
-  // Scroll handler
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 0);
-    };
-    setIsScrolled(window.scrollY > 0);
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  const handleEditorChange = useCallback(
+    (html: string, { isLocal }: { isLocal: boolean }) => {
+      latestHtmlRef.current = html;
+      setHasReferencesSection(html.includes('data-bibliography'));
+      // A collaborator's change is saved by the collaborator's own browser.
+      if (isLocal) scheduleSave({ content: html });
+    },
+    [scheduleSave]
+  );
 
-  // Document saving action
-  const handleSave = useCallback(async () => {
-    if (isSaving) return;
-    setIsSaving(true);
-    setSaveStatus('saving');
-    try {
-      await updateDoc({
-        id: docs._id,
-        title: title,
-        content: content,
-      });
-      setIsDirty(false);
-      setSaveStatus('saved');
-    } catch (error) {
-      console.error('Failed to save document:', error);
-      setSaveStatus('unsaved');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [docs._id, title, content, isSaving, updateDoc]);
-
-  // Keyboard shortcut Ctrl+S or Cmd+S to save
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave]);
-
-  // Warning dialog if trying to close/refresh browser page while dirty
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
-        e.preventDefault();
-        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-        return e.returnValue;
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
-
-  // Handle changes from TipTap editor
-  const handleEditorChange = (html: string) => {
-    setContent(html);
-    setIsDirty(true);
-    setSaveStatus('unsaved');
+  const handleTitleChange = (next: string) => {
+    setTitle(next);
+    scheduleSave({ title: next });
   };
 
+  const status = documentStatus(docs.status);
+  const handleStatusChange = (next: DocumentStatus) => {
+    void updateDoc({ id: docs._id, status: statusValue(next) });
+  };
+
+  const handlePrint = useCallback(() => {
+    if (!editorInstance) return;
+    printDocument({
+      title: title.trim() || 'Untitled Document',
+      contentHtml: editorInstance.getHTML(),
+      geometry,
+      citationStyle,
+      references: references ?? [],
+      // The printed reference list is numbered by first appearance, so it
+      // needs the same order the markers in the text were numbered from.
+      citationOrder: getCitationOrder(editorInstance),
+    });
+  }, [editorInstance, title, geometry, citationStyle, references]);
+
+  /** A local copy of the text, offered when saving fails. */
+  const downloadCopy = useCallback(() => {
+    const html = editorInstance?.getHTML() ?? latestHtmlRef.current ?? '';
+    const safeTitle = (title.trim() || 'Untitled Document').replace(/[<>&"]/g, '');
+    const blob = new Blob(
+      [
+        `<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title></head><body>${html}</body></html>`,
+      ],
+      { type: 'text/html' }
+    );
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${docs.slug || 'document'}.html`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [editorInstance, title, docs.slug]);
+
+  /** File › New document: the same template-or-blank chooser the home page opens. */
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const openNewDocument = useCallback(() => {
+    // The wizard navigates away once it has created the document.
+    void flushSave();
+    setWizardOpen(true);
+  }, [flushSave]);
+
+  // ⌘S writes now rather than after the debounce; ⌘P prints through the
+  // paged print path rather than the browser's view of the app; ⌘/ toggles
+  // the side panel.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === 's') {
+        event.preventDefault();
+        void flushSave();
+      } else if (key === 'p') {
+        event.preventDefault();
+        handlePrint();
+      } else if (key === '/') {
+        event.preventDefault();
+        selectPanel(activePanel ? null : lastPanelRef.current);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [flushSave, handlePrint, selectPanel, activePanel]);
+
+  // Only warn on leaving while something is genuinely not yet stored.
+  useEffect(() => {
+    if (saveState === 'saved') return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = 'Your latest changes are still being saved.';
+      return event.returnValue;
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [saveState]);
+
+  // References the text does not cite yet. Shown on Research as well: it is
+  // what is left to work into the paper from what has been collected.
+  const citedKeys = new Set(citationOrder);
+  const uncitedCount = (references ?? []).filter(
+    (reference) => !citedKeys.has(reference.citationKey)
+  ).length;
+  const uncitedBadge: PanelBadge = {
+    count: uncitedCount,
+    label: `${uncitedCount} ${uncitedCount === 1 ? 'reference' : 'references'} not cited yet`,
+  };
+
+  const [notifications] = useNotificationSettings();
+
+  const allBadges: Partial<Record<PanelId, PanelBadge>> = {
+    research: uncitedBadge,
+    references: uncitedBadge,
+    comments: {
+      count: threads.length,
+      label: `${threads.length} open ${threads.length === 1 ? 'thread' : 'threads'}`,
+    },
+    chat: {
+      count: unreadCount,
+      highlight: mentionsMe,
+      label: unreadLabel(unreadCount, mentionsMe),
+    },
+  };
+
+  // Settings › Notifications switches each badge off on its own.
+  const badges: Partial<Record<PanelId, PanelBadge>> = {};
+  if (notifications.research) badges.research = allBadges.research;
+  if (notifications.references) badges.references = allBadges.references;
+  if (notifications.comments) badges.comments = allBadges.comments;
+  if (notifications.chat) badges.chat = allBadges.chat;
+
+  const panelBody = activePanel && (
+    <>
+      {activePanel === 'research' && <ResearchPanel documentId={docs._id} />}
+      {activePanel === 'references' && (
+        <ReferencesPanel
+          documentId={docs._id}
+          citationStyle={citationStyle}
+          onCitationStyleChange={(style) =>
+            void setDocumentCitationStyle({
+              id: docs._id,
+              citationStyle: style,
+            })
+          }
+          citationOrder={citationOrder}
+          onInsertCitation={
+            editorInstance
+              ? (key: string) => editorInstance.chain().focus().insertCitation(key).run()
+              : undefined
+          }
+          onInsertBibliography={
+            editorInstance
+              ? () => editorInstance.chain().focus().insertReferencesSection().run()
+              : undefined
+          }
+          hasBibliography={hasReferencesSection}
+        />
+      )}
+      {activePanel === 'comments' && <CommentsList />}
+      {activePanel === 'chat' && <Chat />}
+      {activePanel === 'activity' && <ContributionsPanel documentId={docs._id} />}
+    </>
+  );
+
+  const activeMeta = PANELS.find((panel) => panel.id === activePanel);
+
   return (
-    <div className={`min-h-screen bg-muted/10 pb-20 ${isScrolled ? 'mb-24' : 'mb-0'}`}>
-      {/* Document Header Wrapper */}
-      <div
-        className={`sticky top-0 z-30 transition-all duration-300 w-full ${
-          isScrolled
-            ? 'bg-background/95 backdrop-blur-md border-b border-border/80 shadow-xs'
-            : 'bg-transparent'
-        }`}
+    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+      <a
+        href="#document"
+        className="sr-only z-50 rounded-md bg-background px-3 py-2 focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div
-            className={`flex flex-col justify-center px-1 transition-all duration-300 ${
-              isScrolled ? 'h-14 gap-0' : 'h-24 gap-1'
-            }`}
-          >
-            <div className="flex items-center justify-between w-full">
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => {
-                  setTitle(e.target.value);
-                  setIsDirty(true);
-                  setSaveStatus('unsaved');
-                }}
-                className={`font-extrabold bg-transparent border-none outline-none focus:ring-0 placeholder-muted-foreground w-full p-0 text-foreground tracking-tight transition-all duration-300 ${
-                  isScrolled ? 'text-lg' : 'text-3xl'
-                }`}
-                placeholder="Untitled Document"
-              />
+        Skip to document
+      </a>
 
-              {/* Document status indication and manual save controls */}
-              <div className="flex items-center gap-4 ml-4">
-                <Collaborators />
+      <EditorHeader
+        title={title}
+        onTitleChange={handleTitleChange}
+        templateName={docs.templateSnapshot?.name}
+        status={status}
+        onStatusChange={handleStatusChange}
+        saveState={saveState}
+        lastSavedAt={lastSavedAt}
+        onRetrySave={() => void flushSave()}
+        onDownloadCopy={downloadCopy}
+        onPrint={handlePrint}
+      />
 
-                <div className="flex items-center gap-2 text-xs font-semibold select-none">
-                  {saveStatus === 'saving' && (
-                    <span className="text-muted-foreground flex items-center gap-1.5 animate-pulse">
-                      <Loader size={16} className="animate-spin" />
-                      Saving...
-                    </span>
-                  )}
-                  {saveStatus === 'saved' && (
-                    <span className="text-emerald-500 flex items-center gap-1">
-                      <Check size={16} />
-                      Saved
-                    </span>
-                  )}
-                  {saveStatus === 'unsaved' && (
-                    <span className="text-amber-500 flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping inline-block" />
-                      Unsaved changes
-                    </span>
-                  )}
-                </div>
+      {saveState === 'offline' && (
+        <output className="block shrink-0 border-b border-warning/30 bg-warning/10 px-4 py-1.5 text-center text-sm text-foreground">
+          You&rsquo;re offline. Keep writing: your edits are kept in this browser and sync when the
+          connection returns.
+        </output>
+      )}
 
-                <Button
-                  onClick={handleSave}
-                  disabled={!isDirty || isSaving}
-                  size="sm"
-                  variant={isDirty ? 'default' : 'outline'}
-                  className="h-8 shadow-xs text-xs font-bold transition-all duration-300"
-                >
-                  Save
-                </Button>
-
-                {/* Sources: finding papers and managing the bibliography. Its
-                    own drawer, because it is work on the document rather than
-                    conversation about it — and because a citation is inserted
-                    at the caret, which means reading the paper and placing the
-                    reference want to be one uninterrupted move. */}
-                <Drawer
-                  direction={isMobile ? 'bottom' : 'right'}
-                  open={isResearchOpen}
-                  onOpenChange={setIsResearchOpen}
-                >
-                  <DrawerTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 gap-1.5 px-2.5 text-xs font-bold text-muted-foreground shadow-xs hover:text-foreground cursor-pointer"
-                      title="Research and references"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      Research
-                    </Button>
-                  </DrawerTrigger>
-                  <DrawerContent className="p-0 flex flex-col h-full bg-background border-l border-border max-w-sm sm:max-w-md w-full">
-                    <DrawerHeader className="p-4 border-b border-border/85 text-left">
-                      <DrawerTitle className="text-sm font-bold text-foreground">
-                        Research
-                      </DrawerTitle>
-                      <DrawerDescription className="text-xs text-muted-foreground">
-                        Find papers and manage this document's references.
-                      </DrawerDescription>
-                    </DrawerHeader>
-
-                    <div className="flex bg-muted/60 p-1 rounded-lg m-4 border border-border/40 shrink-0">
-                      <Button
-                        onClick={() => setResearchTab('research')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
-                          researchTab === 'research'
-                            ? 'bg-background text-foreground shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Find papers
-                      </Button>
-                      <Button
-                        onClick={() => setResearchTab('references')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
-                          researchTab === 'references'
-                            ? 'bg-background text-foreground shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        References
-                      </Button>
-                      <Button
-                        onClick={() => setResearchTab('contributions')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
-                          researchTab === 'contributions'
-                            ? 'bg-background text-foreground shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Contributors
-                      </Button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto px-4 pb-4">
-                      {researchTab === 'research' && <ResearchPanel documentId={docs._id} />}
-                      {researchTab === 'contributions' && (
-                        <ContributionsPanel documentId={docs._id} />
-                      )}
-                      {researchTab === 'references' && (
-                        <ReferencesPanel
-                          documentId={docs._id}
-                          citationStyle={citationStyle}
-                          onCitationStyleChange={(style) =>
-                            void setDocumentCitationStyle({ id: docs._id, citationStyle: style })
-                          }
-                          citationOrder={citationOrder}
-                          onInsertCitation={
-                            editorInstance
-                              ? (key: string) =>
-                                  editorInstance.chain().focus().insertCitation(key).run()
-                              : undefined
-                          }
-                          onInsertBibliography={
-                            editorInstance
-                              ? () => editorInstance.chain().focus().insertReferencesSection().run()
-                              : undefined
-                          }
-                          hasBibliography={hasReferencesSection}
-                        />
-                      )}
-                    </div>
-                  </DrawerContent>
-                </Drawer>
-
-                {/* Collaboration: comments and team chat. Controlled rather
-                    than self-managed, so a notification can open it. */}
-                <Drawer
-                  direction={isMobile ? 'bottom' : 'right'}
-                  open={isCollabOpen}
-                  onOpenChange={setIsCollabOpen}
-                >
-                  <DrawerTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="relative h-8 w-8 text-muted-foreground hover:text-foreground shadow-xs cursor-pointer"
-                      title={
-                        unreadCount > 0
-                          ? `${unreadCount} unread ${unreadCount === 1 ? 'message' : 'messages'}`
-                          : 'Collaboration Panel'
-                      }
-                      aria-label={unreadLabel(unreadCount, mentionsMe)}
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      <UnreadBadge count={unreadCount} highlight={mentionsMe} />
-                    </Button>
-                  </DrawerTrigger>
-                  <DrawerContent className="p-0 flex flex-col h-full bg-background border-l border-border max-w-sm sm:max-w-md w-full">
-                    <DrawerHeader className="p-4 border-b border-border/85 text-left">
-                      <DrawerTitle className="text-sm font-bold text-foreground">
-                        Collaboration Panel
-                      </DrawerTitle>
-                      <DrawerDescription className="text-xs text-muted-foreground">
-                        Chat with teammates or view document comments.
-                      </DrawerDescription>
-                    </DrawerHeader>
-
-                    {/* Tab Navigation */}
-                    <div className="flex bg-muted/60 p-1 rounded-lg m-4 border border-border/40 shrink-0">
-                      <Button
-                        onClick={() => setActiveTab('comments')}
-                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
-                          activeTab === 'comments'
-                            ? 'bg-background text-foreground shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Comments
-                      </Button>
-                      <Button
-                        onClick={() => setActiveTab('chat')}
-                        className={`relative flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
-                          activeTab === 'chat'
-                            ? 'bg-background text-foreground shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Team Chat
-                        {/* Also on the tab: with the panel open on Comments,
-                            the button's own badge is behind the drawer. */}
-                        <UnreadBadge count={unreadCount} highlight={mentionsMe} />
-                      </Button>
-                    </div>
-
-                    {/* Tab Content */}
-                    <div className="flex-1 overflow-y-auto px-4 pb-4">
-                      {activeTab === 'comments' && <CommentsList />}
-                      {activeTab === 'chat' && <Chat />}
-                    </div>
-                  </DrawerContent>
-                </Drawer>
-              </div>
-            </div>
-
-            <p
-              className={`text-muted-foreground font-medium transition-all duration-300 ${
-                isScrolled ? 'text-[10px]' : 'text-xs'
-              }`}
+      <Tiptap
+        initialContent={docs.content}
+        onChange={handleEditorChange}
+        onEditorReady={setEditorInstance}
+        classOptions={docs.templateSnapshot?.classOptions}
+        documentClass={docs.templateSnapshot?.documentClass}
+        templateSections={template?.sections}
+        references={references}
+        citationStyle={citationStyle}
+        onCitationOrderChange={setCitationOrder}
+        onUploadImage={uploadFigureImage}
+        onOpenReferences={() => selectPanel('references')}
+        onFocusModeChange={setFocusMode}
+        documentActions={{
+          onNewDocument: openNewDocument,
+          onOpenDocuments: () => router.push('/docs'),
+          onSave: () => void flushSave(),
+          onPrint: handlePrint,
+          onDownloadHtml: downloadCopy,
+          activePanel,
+          onSelectPanel: selectPanel,
+        }}
+        panel={
+          canDockPanel && activePanel ? (
+            <SidePanelFrame
+              panel={activePanel}
+              onClose={() => selectPanel(null)}
+              className="w-88 shrink-0 border-l border-border xl:w-96"
             >
-              {docs.templateSnapshot?.name ?? 'Rich text document'} • Draft
-            </p>
-          </div>
-        </div>
-      </div>
+              {panelBody}
+            </SidePanelFrame>
+          ) : null
+        }
+        rail={<PanelRail active={activePanel} onSelect={selectPanel} badges={badges} />}
+      />
 
-      {/* Document Canvas Wrapper */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <div className="bg-background rounded-xl border border-border/80 shadow-md hover:shadow-lg transition-all duration-300">
-          <Tiptap
-            isPageScrolled={isScrolled}
-            initialContent={docs.content}
-            onChange={handleEditorChange}
-            onEditorReady={setEditorInstance}
-            documentTitle={title}
-            classOptions={docs.templateSnapshot?.classOptions}
-            documentClass={docs.templateSnapshot?.documentClass}
-            references={references}
-            citationStyle={citationStyle}
-            onCitationOrderChange={setCitationOrder}
-            onUploadImage={uploadFigureImage}
-          />
-        </div>
-      </div>
+      {!canDockPanel && (
+        <Drawer
+          direction={isMobile ? 'bottom' : 'right'}
+          open={activePanel !== null}
+          onOpenChange={(open) => !open && selectPanel(null)}
+        >
+          <DrawerContent className="flex h-full max-h-[85dvh] w-full flex-col bg-card p-0 md:max-h-none md:max-w-md">
+            <DrawerHeader className="border-b border-border p-4 text-left">
+              <DrawerTitle className="text-sm font-semibold">{activeMeta?.title}</DrawerTitle>
+              <DrawerDescription className="text-xs">{activeMeta?.description}</DrawerDescription>
+            </DrawerHeader>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4">{panelBody}</div>
+          </DrawerContent>
+        </Drawer>
+      )}
 
-      <ChatToasts toasts={toasts} onOpen={openChat} onDismiss={dismissToast} />
+      {wizardOpen && <CreateDocumentWizard open onOpenChange={setWizardOpen} />}
+
+      {/* Bottom-left, so the notifications never sit on top of the docked panel. */}
+      <ChatToasts
+        toasts={notifications.chat ? toasts : []}
+        onOpen={openChat}
+        onDismiss={dismissToast}
+      />
     </div>
   );
 }

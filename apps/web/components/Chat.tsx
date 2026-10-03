@@ -100,7 +100,7 @@ export function Chat() {
   );
 
   return (
-    <div className="flex h-[500px] flex-col overflow-hidden rounded-xl border border-border/80 bg-background shadow-xs">
+    <div className="flex h-full min-h-96 flex-col overflow-hidden rounded-lg border border-border bg-background">
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {messages === undefined ? (
           <div className="flex h-full items-center justify-center">

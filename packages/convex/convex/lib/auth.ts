@@ -63,16 +63,38 @@ export async function requireAdmin(ctx: Ctx): Promise<Doc<"users">> {
   return user;
 }
 
-/** True when the caller may read/write `document`. */
+/** True when `document` is in the caller's workspace: theirs, or their org's. */
+export function isDocumentMember(
+  document: Pick<Doc<"documents">, "author" | "orgId">,
+  user: Doc<"users">
+): boolean {
+  if (document.author === user._id) return true;
+  if (!document.orgId) return false;
+  // Org documents are shared with everyone Clerk reports as a member of that org.
+  return (user.orgIds ?? []).includes(document.orgId);
+}
+
+/** True when the document is in the recycle bin. */
+export async function isInTrash(ctx: Ctx, documentId: Doc<"documents">["_id"]): Promise<boolean> {
+  const entry = await ctx.db
+    .query("trash")
+    .withIndex("by_document", (q) => q.eq("documentId", documentId))
+    .first();
+  return entry !== null;
+}
+
+/**
+ * True when the caller may read/write `document`. A binned document is closed
+ * to everything but the bin itself (see trash.ts), which is what hides it
+ * from the editor, chat, comments and references at once.
+ */
 export async function canAccessDocument(
   ctx: Ctx,
   document: Doc<"documents">,
   user: Doc<"users">
 ): Promise<boolean> {
-  if (document.author === user._id) return true;
-  if (!document.orgId) return false;
-  // Org documents are shared with everyone Clerk reports as a member of that org.
-  return (user.orgIds ?? []).includes(document.orgId);
+  if (!isDocumentMember(document, user)) return false;
+  return !(await isInTrash(ctx, document._id));
 }
 
 export async function requireDocumentAccess(

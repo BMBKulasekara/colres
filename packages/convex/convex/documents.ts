@@ -19,7 +19,7 @@ import { citationStyleValidator } from "./schema.js";
  * static page, and Next.js resolves static segments before the dynamic
  * `[editor]` one, so a document with that slug would be unreachable.
  */
-export const RESERVED_SLUGS = new Set(["templates", "new", "settings"]);
+export const RESERVED_SLUGS = new Set(["templates", "trash", "new", "settings"]);
 
 /** Lowercase letters, digits and single hyphens between them. */
 export function isValidSlug(slug: string): boolean {
@@ -212,6 +212,12 @@ export const setCitationStyle = mutation({
     },
 });
 
+/** The documents that are not in the recycle bin. */
+function withoutBinned(documents: Doc<"documents">[], binned: Doc<"trash">[]) {
+    const binnedIds = new Set(binned.map((entry) => entry.documentId));
+    return documents.filter((doc) => !binnedIds.has(doc._id));
+}
+
 export const getAllDocumentsByUserId = query({
     args: {
         orgId: v.optional(v.string()),
@@ -226,28 +232,33 @@ export const getAllDocumentsByUserId = query({
             if (!(user.orgIds ?? []).includes(args.orgId)) {
                 return [];
             }
-            return await ctx.db
-                .query("documents")
-                .withIndex("by_org_id", (q) => q.eq("orgId", args.orgId))
-                .collect();
+            const [documents, binned] = await Promise.all([
+                ctx.db
+                    .query("documents")
+                    .withIndex("by_org_id", (q) => q.eq("orgId", args.orgId))
+                    .collect(),
+                ctx.db
+                    .query("trash")
+                    .withIndex("by_org", (q) => q.eq("orgId", args.orgId))
+                    .collect(),
+            ]);
+            return withoutBinned(documents, binned);
         }
 
-        const documents = await ctx.db
-            .query("documents")
-            .withIndex("by_author", (q) => q.eq("author", user._id))
-            .collect();
-        return documents.filter((doc) => !doc.orgId);
-    },
-});
-
-export const deleteDocumentById = mutation({
-    args: {
-        id: v.id("documents"),
-    },
-    handler: async (ctx, args) => {
-        const { document } = await requireDocumentAccess(ctx, args.id);
-        await cascadeDeleteDocument(ctx, args.id);
-        return document;
+        const [documents, binned] = await Promise.all([
+            ctx.db
+                .query("documents")
+                .withIndex("by_author", (q) => q.eq("author", user._id))
+                .collect(),
+            ctx.db
+                .query("trash")
+                .withIndex("by_author", (q) => q.eq("author", user._id))
+                .collect(),
+        ]);
+        return withoutBinned(
+            documents.filter((doc) => !doc.orgId),
+            binned
+        );
     },
 });
 

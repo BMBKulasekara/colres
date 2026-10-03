@@ -8,7 +8,7 @@ import {
   numberFloats,
   uncitedFloats,
 } from '../../lib/floatNumbering';
-import { floatKindOf } from './FloatNodes';
+import { floatKindOf, newFloatId } from './FloatNodes';
 
 /**
  * Numbers every figure and table, and every mention of them in the prose.
@@ -56,6 +56,52 @@ interface FloatNumberingStorage {
 }
 
 const floatNumberingKey = new PluginKey<DecorationSet>('floatNumbering');
+const uniqueFloatIdsKey = new PluginKey('uniqueFloatIds');
+
+/** The meta key y-prosemirror tags the changes it applies from the shared document with. */
+const REMOTE_CHANGE_META = 'y-sync$';
+
+/**
+ * Gives every float an id of its own.
+ *
+ * Copying a figure or table and pasting it carries the original's id along, so
+ * two floats would share one number and one cross-reference target. The first
+ * keeps the id, which is what existing cross-references point at; every later
+ * duplicate, and any float pasted in without an id, gets a fresh one.
+ *
+ * Only changes made in this browser are repaired here. A collaborator's paste
+ * is repaired in theirs and arrives already unique, so two browsers never
+ * race to rename the same float.
+ */
+function uniqueFloatIdsPlugin() {
+  return new Plugin({
+    key: uniqueFloatIdsKey,
+    appendTransaction(transactions, _oldState, newState) {
+      const hasLocalEdit = transactions.some(
+        (tr) => tr.docChanged && !tr.getMeta(REMOTE_CHANGE_META)?.isChangeOrigin
+      );
+      if (!hasLocalEdit) return null;
+
+      const seen = new Set<string>();
+      const repair = newState.tr;
+      newState.doc.descendants((node, pos) => {
+        const kind = floatKindOf(node.type.name);
+        if (!kind) return true;
+
+        const id = node.attrs.floatId as string | null;
+        if (id && !seen.has(id)) {
+          seen.add(id);
+        } else {
+          const fresh = newFloatId(kind);
+          seen.add(fresh);
+          repair.setNodeAttribute(pos, 'floatId', fresh);
+        }
+        return true;
+      });
+      return repair.docChanged ? repair : null;
+    },
+  });
+}
 
 interface FoundFloat extends FloatOccurrence {
   pos: number;
@@ -180,6 +226,7 @@ export const FloatNumbering = Extension.create<FloatNumberingOptions, FloatNumbe
     const extension = this;
 
     return [
+      uniqueFloatIdsPlugin(),
       new Plugin({
         key: floatNumberingKey,
 
