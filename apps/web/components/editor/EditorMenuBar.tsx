@@ -34,6 +34,7 @@ import {
   ClipboardPaste,
   Copy,
   Download,
+  FileCode,
   FilePlus2,
   Files,
   FileText,
@@ -82,6 +83,8 @@ export interface DocumentMenuActions {
   onSave: () => void;
   onPrint: () => void;
   onDownloadHtml: () => void;
+  /** LaTeX project as a zip. The menu item is hidden when absent. */
+  onDownloadLatex?: () => void;
   activePanel: PanelId | null;
   onSelectPanel: (panel: PanelId | null) => void;
 }
@@ -280,6 +283,13 @@ export function EditorMenuBar({
                       Web page
                       <MenubarShortcut>.html</MenubarShortcut>
                     </MenubarItem>
+                    {documentActions.onDownloadLatex && (
+                      <MenubarItem onSelect={act(documentActions.onDownloadLatex)}>
+                        <FileCode />
+                        LaTeX project
+                        <MenubarShortcut>.zip</MenubarShortcut>
+                      </MenubarItem>
+                    )}
                   </MenubarSubContent>
                 </MenubarSub>
               </>

@@ -16,17 +16,134 @@ how it fits the existing code, and roughly what it involves.
 - **Team features:** organizations, contribution stats, and a recycle bin
   purged after 30 days by a cron job.
 - **Admin app:** users, organizations, documents, templates, activity, stats.
-- **Export:** PDF (via print) and HTML only.
+- **Export:** PDF (via print), HTML, and `refs.bib` from the references panel.
+- **Reference import:** DOI lookup, title search and PDF import already exist.
 
-## Recommended order
+## Build plan
 
-1. LaTeX export
-2. Version history
-3. Per-document sharing and roles
-4. AI writing assistant
-5. Notifications
+The features below are grouped into phases. Each phase ships on its own, is
+mostly additive (new files, new tables, new menu items), and has a clear
+"done when" so it can be tested before moving on. Phases are ordered by value
+over effort, and by what later phases depend on.
+
+Status key: ✅ done · 🚧 in progress · ⬜ not started
+
+### Phase 1: LaTeX export 🚧
+
+Frontend only: no schema change, no server cost. The data model already holds
+everything LaTeX needs (`templateSnapshot`, BibTeX-shaped `references`,
+citation keys on every citation).
+
+| Step | Work | Status |
+|---|---|---|
+| 1.1 | Share the existing BibTeX writer (`convex/lib/citations.ts`) with the web app | ✅ |
+| 1.2 | Converter: editor JSON → `main.tex` (headings, marks, lists, links, citations, page breaks) with LaTeX escaping | ✅ |
+| 1.3 | Floats: figures, tables, captions, `\label` / `\ref` cross-references | ✅ |
+| 1.4 | Preamble from the template: class, options, engine, bib tool, citation style | ✅ |
+| 1.5 | Zip download (`main.tex`, `references.bib`, `figures/`) and a menu item | ✅ |
+| 1.6 | Unit tests for the converter | ✅ |
+| 1.7 | Check real exports compile in Overleaf; fix what breaks | ⬜ |
+| 1.8 | Template specifics: APA 7 running head and author note, ACM/IEEE front matter | ⬜ |
+| 1.9 | "Open in Overleaf" button | ⬜ |
+
+**Done when:** an IEEE and a plain `article` paper export, upload to Overleaf,
+and compile with no errors and correct citations, figures and references.
+
+### Phase 2: Version history ⬜
+
+| Step | Work |
+|---|---|
+| 2.1 | `documentVersions` table and `versions.ts` (list, get, create, restore) with access checks |
+| 2.2 | Automatic snapshots: on save, at most one per N minutes of editing, skipping unchanged content |
+| 2.3 | Named versions ("Submitted to journal") from the File menu |
+| 2.4 | History side panel: list, read-only preview, Restore |
+| 2.5 | Restore writes through the editor so collaborators see it live, and snapshots the current text first |
+| 2.6 | Retention: keep named versions; thin out old automatic ones with a cron job |
+| 2.7 | Versions removed with their document in the recycle-bin purge |
+
+**Done when:** a user can see earlier versions, preview one, and restore it
+without losing the text it replaced.
+
+### Phase 3: Full-text search ⬜
+
+Small, and makes later phases (sharing, notifications) easier to navigate.
+
+| Step | Work |
+|---|---|
+| 3.1 | Optional `plainText` field on documents, filled on save |
+| 3.2 | `searchIndex` on it, with the same filters as the title index |
+| 3.3 | Search box on the documents page that searches title and body |
+| 3.4 | One-off backfill for existing documents |
+
+**Done when:** searching a phrase from inside a paper finds that paper.
+
+### Phase 4: Per-document sharing and roles ⬜
+
+The biggest change to how access works, so it comes after the safety net of
+version history.
+
+| Step | Work |
+|---|---|
+| 4.1 | `documentMembers` table: document, user, role (`owner`, `editor`, `commenter`, `viewer`) |
+| 4.2 | Extend `requireDocumentAccess` so organization access keeps working unchanged, and direct members are added on top |
+| 4.3 | Share dialog: invite by email, change role, remove |
+| 4.4 | Read-only editor for viewers; comment-only mode for commenters |
+| 4.5 | "Shared with me" list on the documents page |
+| 4.6 | Tests for every role against every mutation |
+
+**Done when:** an outside co-author can be invited to one paper with a chosen
+role, and cannot see anything else.
+
+### Phase 5: Notifications ⬜
+
+| Step | Work |
+|---|---|
+| 5.1 | `notifications` table and `notifications.ts` (list, unread count, mark read) |
+| 5.2 | Write a notification on chat mention, comment reply, and share invite |
+| 5.3 | Bell with unread count in the app shell |
+| 5.4 | Optional email digest from a cron job, with an opt-out setting |
+
+**Done when:** being mentioned or invited shows up in the bell without opening
+the document.
+
+### Phase 6: AI writing assistant ⬜
+
+| Step | Work |
+|---|---|
+| 6.1 | Shared Gemini helper, reusing the setup in `research.ts` |
+| 6.2 | Chat bot: `@assistant` in team chat schedules an action that replies as a bot message |
+| 6.3 | Inline actions on selected text: improve tone, shorten, explain |
+| 6.4 | "Draft abstract from sections" |
+| 6.5 | Per-user rate limit and a friendly failure message |
+
+**Done when:** a user can ask the assistant about the paper in chat and rewrite
+a selected paragraph, within a rate limit.
+
+### Phase 7: Smaller features ⬜
+
+Independent of each other; pick up between phases.
+
+| Step | Work |
+|---|---|
+| 7.1 | Writing goals: word targets per document and section, a deadline, a progress bar |
+| 7.2 | BibTeX / Zotero `.bib` import into the references panel |
+| 7.3 | `.docx` export |
+| 7.4 | Save a document as a personal or organization template |
+| 7.5 | Track changes / suggestion mode (large; plan separately) |
+| 7.6 | Replace the starter README with real setup instructions |
+
+### Known issues found along the way
+
+- **Recycle-bin purge leaves chat files behind.** `lib/cascade.ts` deletes a
+  document's chat rows but not the files in Convex storage that those messages
+  attached. Fix before relying on "permanently erased" for files.
+- **`.bib` titles are not escaped.** `toBibtexEntry` braces capitals in titles
+  but does not escape `&`, `%`, `$`, `#` or `_`, so a title such as "R&D" breaks
+  BibTeX. Affects both the `.bib` download and the LaTeX export.
 
 ---
+
+# Feature details
 
 ## 1. Version history
 
@@ -124,8 +241,8 @@ The search index covers `title` only.
 
 **Value:** medium · **Effort:** small
 
-- Import references from BibTeX, a DOI, or a Zotero export. DOI lookup is
-  close to free, since the app already pulls data from OpenAlex and Crossref.
+- DOI lookup, title search and PDF import already exist. Still missing:
+  importing a `.bib` file, which also covers Zotero and Mendeley exports.
 - Import `.docx` or `.tex` to start a document from existing work.
 
 ## 9. Smaller improvements

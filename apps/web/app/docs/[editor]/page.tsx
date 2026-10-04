@@ -39,6 +39,7 @@ import { getCitationOrder } from '../../../components/tiptap/CitationNumbering';
 import { printDocument } from '../../../components/tiptap/printDocument';
 import type { CitationStyle } from '../../../lib/citationFormat';
 import { type DocumentStatus, documentStatus, statusValue } from '../../../lib/documentStatus';
+import { downloadLatexZip } from '../../../lib/latexDownload';
 import { getPageGeometry } from '../../../lib/pageGeometry';
 import { useNotificationSettings } from '../../../lib/useNotificationSettings';
 import { Room } from './Room';
@@ -319,6 +320,28 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
     URL.revokeObjectURL(url);
   }, [editorInstance, title, docs.slug]);
 
+  /** File › Download › LaTeX project: main.tex, references.bib and figures, zipped. */
+  const downloadLatex = useCallback(() => {
+    if (!editorInstance) return;
+    const snapshot = docs.templateSnapshot;
+    void downloadLatexZip(
+      {
+        title,
+        doc: editorInstance.getJSON(),
+        template: snapshot && {
+          documentClass: snapshot.documentClass,
+          classOptions: snapshot.classOptions,
+          engine: snapshot.engine,
+          bibTool: snapshot.bibTool,
+          citationStyle: snapshot.citationStyle,
+        },
+        citationStyle,
+        references: references ?? [],
+      },
+      docs.slug || 'document'
+    );
+  }, [editorInstance, title, docs.templateSnapshot, docs.slug, citationStyle, references]);
+
   /** File › New document: the same template-or-blank chooser the home page opens. */
   const [wizardOpen, setWizardOpen] = useState(false);
   const openNewDocument = useCallback(() => {
@@ -478,6 +501,7 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
           onSave: () => void flushSave(),
           onPrint: handlePrint,
           onDownloadHtml: downloadCopy,
+          onDownloadLatex: downloadLatex,
           activePanel,
           onSelectPanel: selectPanel,
         }}
