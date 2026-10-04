@@ -17,6 +17,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { Collaborators } from '../../app/docs/[editor]/Collaborators';
 import { DOCUMENT_STATUS_LABELS, type DocumentStatus } from '../../lib/documentStatus';
+import { NotificationBell } from '../NotificationBell';
 import { ColresMark } from '../shell/ColresMark';
 import { SaveIndicator } from './SaveIndicator';
 import type { SaveState } from './useAutosave';
@@ -149,6 +150,8 @@ export function EditorHeader({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <NotificationBell />
 
         {/* Switching changes the workspace for the home page and new
             documents; this document stays where it is. */}

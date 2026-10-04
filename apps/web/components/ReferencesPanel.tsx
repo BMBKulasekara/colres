@@ -30,6 +30,7 @@ import {
   type ReferenceType,
 } from '../lib/citationFormat';
 import { orderBibliography } from '../lib/citationNumbering';
+import { BibImportButton } from './references/BibImport';
 import { PdfReferenceImport } from './references/PdfReferenceImport';
 
 /** The styles offered in the picker, most used first. */
@@ -415,8 +416,9 @@ export function ReferencesPanel({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+      {/* Wraps so the import result can take a full line under the buttons. */}
+      <div className="flex flex-wrap items-center gap-y-2">
+        <h3 className="mr-auto text-xs font-bold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
           <BookMarked className="h-3.5 w-3.5" />
           Bibliography
           {references && <span className="font-mono normal-case">({references.length})</span>}
@@ -433,6 +435,7 @@ export function ReferencesPanel({
             .bib
           </Button>
         )}
+        <BibImportButton documentId={documentId} />
       </div>
 
       {/* The document's citation style. Changing it re-sets every citation in

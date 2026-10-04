@@ -9,7 +9,8 @@ import {
   requireDocumentAccess,
   requireUser,
 } from "./lib/auth.js";
-import { canManageSharing, looksLikeEmail, normalizeEmail } from "./lib/sharing.js";
+import { notify } from "./lib/notify.js";
+import { ROLE_LABELS, canManageSharing, looksLikeEmail, normalizeEmail } from "./lib/sharing.js";
 
 /**
  * Sharing a document with people outside its workspace.
@@ -117,13 +118,23 @@ export const invite = mutation({
       await ctx.db.patch(existing._id, { role: args.role });
       return existing._id;
     }
-    return await ctx.db.insert("documentMembers", {
+    const memberId = await ctx.db.insert("documentMembers", {
       documentId: document._id,
       email,
       role: args.role,
       invitedBy: user._id,
       createdAt: Date.now(),
     });
+    // Someone without an account yet sees it under "Shared with me" instead.
+    if (invitee) {
+      await notify(ctx, [invitee._id], {
+        kind: "share",
+        documentId: document._id,
+        actor: user,
+        preview: ROLE_LABELS[args.role],
+      });
+    }
+    return memberId;
   },
 });
 

@@ -24,4 +24,7 @@ crons.interval(
   {}
 );
 
+// Notifications older than 90 days are deleted.
+crons.daily("prune old notifications", { hourUTC: 3, minuteUTC: 30 }, internal.notifications._pruneOld, {});
+
 export default crons;

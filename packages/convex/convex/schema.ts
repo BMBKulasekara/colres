@@ -589,4 +589,31 @@ export default defineSchema({
   })
     .index("by_document_email", ["documentId", "email"])
     .index("by_email", ["email"]),
+
+  /**
+   * The bell: things that happened to you in a document you were not looking
+   * at. Written as a side effect of the action itself (see
+   * `lib/notify.ts`), never by the client, and pruned after 90 days.
+   */
+  notifications: defineTable({
+    /** Who it is for. */
+    userId: v.id("users"),
+    kind: v.union(
+      v.literal("mention"),
+      v.literal("chat_reply"),
+      v.literal("comment_reply"),
+      v.literal("share")
+    ),
+    documentId: v.id("documents"),
+    actorName: v.string(),
+    actorAvatar: v.string(),
+    /** A short excerpt of the message or comment; the role for a share. */
+    preview: v.string(),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  })
+    .index("by_user_created", ["userId", "createdAt"])
+    .index("by_user_read", ["userId", "readAt"])
+    .index("by_document", ["documentId"])
+    .index("by_created", ["createdAt"]),
 });

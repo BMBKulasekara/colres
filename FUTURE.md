@@ -106,14 +106,15 @@ same address.
 **Done when:** an outside co-author can be invited to one paper with a chosen
 role, and cannot see anything else.
 
-### Phase 5: Notifications ⬜
+### Phase 5: Notifications 🚧
 
-| Step | Work |
-|---|---|
-| 5.1 | `notifications` table and `notifications.ts` (list, unread count, mark read) |
-| 5.2 | Write a notification on chat mention, comment reply, and share invite |
-| 5.3 | Bell with unread count in the app shell |
-| 5.4 | Optional email digest from a cron job, with an opt-out setting |
+| Step | Work | Status |
+|---|---|---|
+| 5.1 | `notifications` table and `notifications.ts` (list, unread count, mark read, mark all read); pruned after 90 days | ✅ |
+| 5.2 | Written on chat mention, chat reply, comment reply, and share invite; never to the actor; hidden once access is lost | ✅ |
+| 5.3 | Bell with unread count in the app's top bar and the editor header | ✅ |
+| 5.4 | Optional email digest from a cron job, with an opt-out setting (needs an email service such as Resend) | ⬜ |
+| 5.5 | Push to Convex and try it with two accounts | ⬜ |
 
 **Done when:** being mentioned or invited shows up in the bell without opening
 the document.
@@ -135,14 +136,14 @@ a selected paragraph, within a rate limit.
 
 Independent of each other; pick up between phases.
 
-| Step | Work |
-|---|---|
-| 7.1 | Writing goals: word targets per document and section, a deadline, a progress bar |
-| 7.2 | BibTeX / Zotero `.bib` import into the references panel |
-| 7.3 | `.docx` export |
-| 7.4 | Save a document as a personal or organization template |
-| 7.5 | Track changes / suggestion mode (large; plan separately) |
-| 7.6 | Replace the starter README with real setup instructions |
+| Step | Work | Status |
+|---|---|---|
+| 7.1 | Writing goals: word targets per document and section, a deadline, a progress bar | ⬜ |
+| 7.2 | `.bib` import into the references panel (Zotero, Mendeley, JabRef, Overleaf): keeps the file's keys, skips duplicates, reports unreadable entries | ✅ |
+| 7.3 | `.docx` export | ⬜ |
+| 7.4 | Save a document as a personal or organization template | ⬜ |
+| 7.5 | Track changes / suggestion mode (large; plan separately) | ⬜ |
+| 7.6 | Replace the starter README with real setup instructions | ⬜ |
 
 ### Known issues found along the way
 
@@ -238,10 +239,8 @@ open the document.
 
 **Value:** medium · **Effort:** small
 
-The search index covers `title` only.
-
-- Store a plain-text copy of the content on save and add a `searchIndex` on it.
-- Lets users find a paper by what they wrote in it, not just its title.
+✅ Built in Phase 3: a `documentSearch` table indexed by a cron job, and a
+search box on the documents page that matches titles and body text.
 
 ## 7. Writing goals and deadlines
 
@@ -256,8 +255,7 @@ The search index covers `title` only.
 
 **Value:** medium · **Effort:** small
 
-- DOI lookup, title search and PDF import already exist. Still missing:
-  importing a `.bib` file, which also covers Zotero and Mendeley exports.
+- ✅ DOI lookup, title search, PDF import and `.bib` import (step 7.2).
 - Import `.docx` or `.tex` to start a document from existing work.
 
 ## 9. Smaller improvements

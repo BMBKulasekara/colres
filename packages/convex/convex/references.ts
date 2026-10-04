@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { action, mutation, query } from "./_generated/server.js";
 import { requireDocumentAccess } from "./lib/auth.js";
 import { bumpContribution } from "./lib/contributions.js";
+import { parseBibtex } from "./lib/bibtexParse.js";
 import { buildCitationKey, toBibtexFile, unprotectedCapitals } from "./lib/citations.js";
 import { optionalText } from "./lib/externalData.js";
 
@@ -180,6 +181,91 @@ export const updateReference = mutation({
 
         await ctx.db.patch(id, { ...patch, updatedAt: Date.now() });
         return await ctx.db.get(id);
+    },
+});
+
+/** Largest .bib accepted in one import, and most entries taken from it. */
+const MAX_BIB_CHARS = 2_000_000;
+const MAX_BIB_ENTRIES = 500;
+
+/** Keys LaTeX accepts in \cite{} without trouble. */
+const SAFE_KEY = /^[A-Za-z0-9_:./+-]{1,100}$/;
+
+const sameTitle = (a: string, b: string) =>
+    a.toLowerCase().replace(/[^a-z0-9]/g, "") === b.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Adds every entry of a .bib file (Zotero, Mendeley, JabRef, Overleaf…).
+ *
+ * The file's own citation keys are kept where they are free, so a paper
+ * already citing `\cite{smith2020}` keeps working. Entries already in the
+ * bibliography — the same DOI, or the same key with the same title — are
+ * skipped rather than added twice.
+ */
+export const importBibtex = mutation({
+    args: { documentId: v.id("documents"), text: v.string() },
+    handler: async (ctx, args) => {
+        const { user } = await requireDocumentAccess(ctx, args.documentId);
+        if (args.text.length > MAX_BIB_CHARS) {
+            throw new Error("This .bib file is too large to import (2 MB at most)");
+        }
+
+        const parsed = parseBibtex(args.text);
+        const entries = parsed.references.slice(0, MAX_BIB_ENTRIES);
+
+        const existing = await ctx.db
+            .query("references")
+            .withIndex("by_document_id", (q) => q.eq("documentId", args.documentId))
+            .collect();
+        const byKey = new Map(existing.map((r) => [r.citationKey, r.title]));
+        const dois = new Set(existing.flatMap((r) => (r.doi ? [r.doi.toLowerCase()] : [])));
+
+        let added = 0;
+        let duplicates = 0;
+        const renamed: { from: string; to: string }[] = [];
+        const now = Date.now();
+
+        for (const entry of entries) {
+            const doi = entry.doi?.toLowerCase();
+            const keyTitle = byKey.get(entry.citationKey);
+            if ((doi && dois.has(doi)) || (keyTitle !== undefined && sameTitle(keyTitle, entry.title))) {
+                duplicates++;
+                continue;
+            }
+
+            let citationKey = entry.citationKey;
+            if (!SAFE_KEY.test(citationKey) || byKey.has(citationKey)) {
+                citationKey = buildCitationKey(entry.authors, entry.year, byKey.keys());
+                renamed.push({ from: entry.citationKey, to: citationKey });
+            }
+
+            await ctx.db.insert("references", {
+                ...entry,
+                documentId: args.documentId,
+                citationKey,
+                editors: entry.editors?.length ? entry.editors : undefined,
+                source: "bibtex",
+                addedBy: user._id,
+                createdAt: now,
+                updatedAt: now,
+            });
+            byKey.set(citationKey, entry.title);
+            if (doi) dois.add(doi);
+            added++;
+        }
+
+        if (added > 0) {
+            await bumpContribution(ctx, args.documentId, user._id, { references: added });
+        }
+
+        return {
+            added,
+            duplicates,
+            renamed,
+            errors: parsed.errors,
+            /** Entries past the limit, which were not imported. */
+            skipped: parsed.references.length - entries.length,
+        };
     },
 });
 

@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel.js';
 import { type QueryCtx, mutation, query } from './_generated/server.js';
 import { requireDocumentAccessByRef } from './lib/auth.js';
+import { notify, usersByClerkIds } from './lib/notify.js';
 import { bumpContribution } from './lib/contributions.js';
 import {
   MAX_ATTACHMENTS_PER_MESSAGE,
@@ -128,11 +129,13 @@ export const sendMessage = mutation({
 
     // A reply has to point at a message in this same document, or a caller
     // could thread one conversation onto another they cannot read.
+    let parentSenderId: string | undefined;
     if (args.replyTo) {
       const parent = await ctx.db.get(args.replyTo);
       if (!parent || parent.documentId !== document._id) {
         throw new Error('That message is not part of this conversation.');
       }
+      parentSenderId = parent.senderId;
     }
 
     // Only people who can actually see the document can be mentioned in it.
@@ -141,7 +144,7 @@ export const sendMessage = mutation({
       : undefined;
 
     await bumpContribution(ctx, document._id, user._id, { messages: 1 });
-    return await ctx.db.insert('chats', {
+    const messageId = await ctx.db.insert('chats', {
       documentId: document._id,
       text,
       senderId: user.clerkId,
@@ -152,6 +155,24 @@ export const sendMessage = mutation({
       mentions: mentions?.length ? mentions : undefined,
       attachments: validated.length ? validated : undefined,
     });
+
+    // The bell: a mention wins over a reply, so nobody is told twice.
+    const preview = text || (validated[0]?.kind === 'voice' ? 'Sent a voice note' : 'Sent a file');
+    const mentioned = await usersByClerkIds(ctx, mentions ?? []);
+    await notify(ctx, mentioned, { kind: 'mention', documentId: document._id, actor: user, preview });
+    if (parentSenderId && !mentions?.includes(parentSenderId)) {
+      const [parentSender] = await usersByClerkIds(ctx, [parentSenderId]);
+      if (parentSender) {
+        await notify(ctx, [parentSender], {
+          kind: 'chat_reply',
+          documentId: document._id,
+          actor: user,
+          preview,
+        });
+      }
+    }
+
+    return messageId;
   },
 });
 
