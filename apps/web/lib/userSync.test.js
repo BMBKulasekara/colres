@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { buildUserProfilePayload } from './userSync.js';
 
 test('builds a Convex-friendly payload from Clerk user data', () => {

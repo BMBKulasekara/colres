@@ -88,6 +88,32 @@ yarn exec turbo dev --filter=web
 pnpm exec turbo dev --filter=web
 ```
 
+### Test
+
+Unit tests use [Vitest](https://vitest.dev) in every package; browser tests use [Playwright](https://playwright.dev).
+
+| Where | What is tested | Environment |
+| --- | --- | --- |
+| `packages/convex` | Queries and mutations, against an in-memory backend ([convex-test](https://docs.convex.dev/testing/convex-test)) | `edge-runtime` |
+| `packages/ui` | Shared components, with Testing Library | `jsdom` |
+| `apps/*` | Pure helpers, hooks and client components | `node` (web), `jsdom` (admin, marketing) |
+| `e2e/` | The running apps, in Chromium (desktop, plus a phone for marketing) | Next dev server locally, `next start` on CI |
+
+```sh
+pnpm test                          # all unit tests, via Turbo
+pnpm --filter admin test:watch     # one package in watch mode
+pnpm --filter admin test lib/format.test.ts      # a single file
+
+pnpm exec playwright install chromium   # once
+pnpm test:e2e                      # all apps; starts (or reuses) their dev servers
+E2E_APPS=marketing pnpm test:e2e   # only some apps
+pnpm test:e2e:ui                   # Playwright's interactive UI
+```
+
+Test files sit next to the code they test as `*.test.ts(x)`. In `packages/convex/convex/`, the Convex CLI skips any file with more than one dot in its name, so tests there are never deployed.
+
+**Signed-in E2E tests** read the Clerk keys from `apps/web/.env.local` and need a test user: copy `e2e/.env.example` to `e2e/.env.local` and set `E2E_CLERK_USER_EMAIL` to a regular (non-admin) user in the Clerk development instance. Without it those tests are skipped. On CI, set the repository secrets `E2E_CLERK_PUBLISHABLE_KEY`, `E2E_CLERK_SECRET_KEY`, `E2E_CONVEX_URL` and `E2E_CLERK_USER_EMAIL`; until then CI runs the marketing E2E tests only.
+
 ### Remote Caching
 
 > [!TIP]

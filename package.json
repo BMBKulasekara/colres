@@ -8,11 +8,17 @@
     "lint": "turbo run lint",
     "format": "biome check . --write",
     "format:check": "biome ci .",
-    "typecheck": "turbo run check-types",
+    "typecheck": "turbo run check-types && tsc -p e2e/tsconfig.json",
+    "test": "turbo run test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "ui:add": "npx shadcn@latest add --cwd packages/ui"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",
+    "@clerk/testing": "^2.2.40",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.15.3",
     "prettier": "^3.7.4",
     "turbo": "^2.8.10",
     "typescript": "5.9.2"

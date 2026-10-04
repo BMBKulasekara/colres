@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { computePageLayout, computePageLayoutWithRunIns } from './pageLayout.ts';
 
 // A4 at 96dpi with one-inch margins and the 24px on-screen gutter.

@@ -15,7 +15,9 @@
   },
   "scripts": {
     "dev": "convex dev",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "convex": "^1.19.2"
@@ -26,12 +28,16 @@
   },
   "devDependencies": {
     "@clerk/nextjs": "^7.5.20",
+    "@edge-runtime/vm": "^5.0.0",
     "@repo/typescript-config": "workspace:*",
     "@types/node": "^22.15.3",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
+    "convex-test": "0.0.54",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
   }
 }

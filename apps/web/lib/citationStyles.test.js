@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { mlaLocator, repeatedAuthors } from './authorPage.ts';
 import { renderBibliographyHtml } from './bibliographyHtml.ts';
 import { bibliographyHeading, formatReferenceText, mlaPageRange } from './citationFormat.ts';

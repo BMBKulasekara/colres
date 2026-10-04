@@ -13,6 +13,8 @@ jobs:
   ci:
     name: CI Checks
     uses: ./.github/workflows/ci.yml
+    # Lets the reusable workflow's E2E job see the E2E_* secrets.
+    secrets: inherit
 
   convex:
     name: Deploy Convex to Production
@@ -30,7 +32,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install Dependencies
@@ -71,7 +73,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install Vercel CLI
