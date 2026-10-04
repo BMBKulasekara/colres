@@ -14,6 +14,7 @@ import {
 } from '@repo/ui/components/ui/dropdown-menu';
 import { ChevronDown, Download, Printer } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { Collaborators } from '../../app/docs/[editor]/Collaborators';
 import { DOCUMENT_STATUS_LABELS, type DocumentStatus } from '../../lib/documentStatus';
 import { ColresMark } from '../shell/ColresMark';
@@ -38,6 +39,8 @@ export function EditorHeader({
   onRetrySave,
   onDownloadCopy,
   onPrint,
+  readOnly = false,
+  share,
 }: {
   title: string;
   onTitleChange: (title: string) => void;
@@ -49,6 +52,10 @@ export function EditorHeader({
   onRetrySave: () => void;
   onDownloadCopy: () => void;
   onPrint: () => void;
+  /** Locks the title and status, for people who cannot edit. */
+  readOnly?: boolean;
+  /** The Share button, placed beside the collaborators. */
+  share?: ReactNode;
 }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-3 sm:px-4">
@@ -70,6 +77,7 @@ export function EditorHeader({
           type="text"
           value={title}
           onChange={(event) => onTitleChange(event.target.value)}
+          readOnly={readOnly}
           aria-label="Document title"
           placeholder="Untitled Document"
           title={templateName ? `${title} · ${templateName}` : title}
@@ -78,7 +86,13 @@ export function EditorHeader({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size="xs" className="shrink-0" aria-label="Document status">
+            <Button
+              variant="secondary"
+              size="xs"
+              className="shrink-0"
+              aria-label="Document status"
+              disabled={readOnly}
+            >
               {DOCUMENT_STATUS_LABELS[status]}
               <ChevronDown aria-hidden="true" />
             </Button>
@@ -112,6 +126,8 @@ export function EditorHeader({
         <div className="hidden sm:block">
           <Collaborators />
         </div>
+
+        {share}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

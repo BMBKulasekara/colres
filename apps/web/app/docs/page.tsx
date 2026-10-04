@@ -38,6 +38,8 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { DocumentSearchInput, DocumentSearchResults } from '../../components/DocumentSearch';
+import { SharedWithMe } from '../../components/SharedWithMe';
 import { StatusChip } from '../../components/StatusChip';
 import { CreateDocumentWizard } from '../../components/templates/CreateDocumentWizard';
 import { documentStatus } from '../../lib/documentStatus';
@@ -85,6 +87,7 @@ export default function Docs() {
   const [wizard, setWizard] = useState<WizardTarget>(null);
   const [isCreatingBlank, setIsCreatingBlank] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Doc<'documents'> | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const sortedDocuments = useMemo(
     () => [...(documents ?? [])].sort((a, b) => b.updatedAt - a.updatedAt),
@@ -160,22 +163,35 @@ export default function Docs() {
             isCreating={isCreatingBlank}
           />
         ) : (
-          <section aria-labelledby="library-heading" className="flex flex-col gap-3">
-            <h2
-              id="library-heading"
-              className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-            >
-              Documents
-            </h2>
-            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {sortedDocuments.map((doc) => (
-                <li key={doc._id}>
-                  <DocumentCard document={doc} onDelete={() => setPendingDelete(doc)} />
-                </li>
-              ))}
-            </ul>
-          </section>
+          <>
+            <DocumentSearchInput value={searchQuery} onChange={setSearchQuery} />
+            {searchQuery.trim() ? (
+              <DocumentSearchResults
+                query={searchQuery}
+                orgId={organization?.id}
+                documents={sortedDocuments}
+              />
+            ) : (
+              <section aria-labelledby="library-heading" className="flex flex-col gap-3">
+                <h2
+                  id="library-heading"
+                  className="text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  Documents
+                </h2>
+                <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {sortedDocuments.map((doc) => (
+                    <li key={doc._id}>
+                      <DocumentCard document={doc} onDelete={() => setPendingDelete(doc)} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </>
         )}
+
+        {!searchQuery.trim() && <SharedWithMe />}
       </div>
 
       <AlertDialog

@@ -49,11 +49,14 @@ export function HistoryPanel({
   documentId,
   flushSave,
   onRestore,
+  readOnly = false,
 }: {
   documentId: Id<'documents'>;
   /** Writes any unsaved typing, so a version taken now includes it. */
   flushSave: () => Promise<void>;
   onRestore: (version: { title: string; content: string }) => void;
+  /** Viewers and commenters can browse history but not name or restore. */
+  readOnly?: boolean;
 }) {
   const versions = useQuery(api.versions.list, { documentId });
   const saveNamed = useMutation(api.versions.saveNamed);
@@ -80,25 +83,27 @@ export function HistoryPanel({
 
   return (
     <div className="flex flex-col gap-4 text-xs">
-      <form onSubmit={handleSave} className="flex flex-col gap-2">
-        <label htmlFor="version-name" className="font-semibold text-muted-foreground">
-          Name the current version
-        </label>
-        <div className="flex gap-2">
-          <Input
-            id="version-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Submitted to journal"
-            maxLength={100}
-            className="h-8 text-xs"
-          />
-          <Button type="submit" size="sm" disabled={saving || !name.trim()}>
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : 'Save'}
-          </Button>
-        </div>
-        {error && <p className="text-destructive">{error}</p>}
-      </form>
+      {!readOnly && (
+        <form onSubmit={handleSave} className="flex flex-col gap-2">
+          <label htmlFor="version-name" className="font-semibold text-muted-foreground">
+            Name the current version
+          </label>
+          <div className="flex gap-2">
+            <Input
+              id="version-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Submitted to journal"
+              maxLength={100}
+              className="h-8 text-xs"
+            />
+            <Button type="submit" size="sm" disabled={saving || !name.trim()}>
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : 'Save'}
+            </Button>
+          </div>
+          {error && <p className="text-destructive">{error}</p>}
+        </form>
+      )}
 
       {versions === undefined ? (
         <Loader2 className="mx-auto mt-6 size-4 animate-spin text-muted-foreground" />
@@ -154,6 +159,7 @@ export function HistoryPanel({
         versionId={previewId}
         onClose={() => setPreviewId(null)}
         flushSave={flushSave}
+        readOnly={readOnly}
         onRestore={(version) => {
           setPreviewId(null);
           onRestore(version);
@@ -183,11 +189,13 @@ function VersionPreview({
   onClose,
   flushSave,
   onRestore,
+  readOnly,
 }: {
   versionId: VersionId | null;
   onClose: () => void;
   flushSave: () => Promise<void>;
   onRestore: (version: { title: string; content: string }) => void;
+  readOnly: boolean;
 }) {
   const version = useQuery(api.versions.get, versionId ? { versionId } : 'skip');
   const prepareRestore = useMutation(api.versions.prepareRestore);
@@ -244,25 +252,27 @@ function VersionPreview({
             <Loader2 className="mx-auto my-12 size-5 animate-spin text-muted-foreground" />
           )}
 
-          <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <form onSubmit={handleRename} className="flex gap-2">
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder={version?.name ? 'Rename' : 'Name this version'}
-                maxLength={100}
-                aria-label="Version name"
-                className="h-9 w-56"
-              />
-              <Button type="submit" variant="outline" disabled={!newName.trim()}>
-                {version?.name ? 'Rename' : 'Keep'}
+          {!readOnly && (
+            <DialogFooter className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <form onSubmit={handleRename} className="flex gap-2">
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder={version?.name ? 'Rename' : 'Name this version'}
+                  maxLength={100}
+                  aria-label="Version name"
+                  className="h-9 w-56"
+                />
+                <Button type="submit" variant="outline" disabled={!newName.trim()}>
+                  {version?.name ? 'Rename' : 'Keep'}
+                </Button>
+              </form>
+              <Button onClick={() => setConfirming(true)} disabled={!version}>
+                <RotateCcw className="size-4" />
+                Restore this version
               </Button>
-            </form>
-            <Button onClick={() => setConfirming(true)} disabled={!version}>
-              <RotateCcw className="size-4" />
-              Restore this version
-            </Button>
-          </DialogFooter>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 

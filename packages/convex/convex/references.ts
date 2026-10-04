@@ -26,7 +26,7 @@ const sourceValidator = v.union(
 export const listReferences = query({
     args: { documentId: v.id("documents") },
     handler: async (ctx, args) => {
-        await requireDocumentAccess(ctx, args.documentId);
+        await requireDocumentAccess(ctx, args.documentId, "view");
 
         const references = await ctx.db
             .query("references")
@@ -200,7 +200,7 @@ export const deleteReference = mutation({
 export const exportBibtex = query({
     args: { documentId: v.id("documents") },
     handler: async (ctx, args) => {
-        await requireDocumentAccess(ctx, args.documentId);
+        await requireDocumentAccess(ctx, args.documentId, "view");
         const references = await ctx.db
             .query("references")
             .withIndex("by_document_id", (q) => q.eq("documentId", args.documentId))

@@ -4,6 +4,7 @@ import { useThreads } from '@liveblocks/react/suspense';
 import { Thread } from '@liveblocks/react-ui';
 import { api } from '@repo/convex/_generated/api';
 import type { Doc, Id } from '@repo/convex/_generated/dataModel';
+import { roleAllows } from '@repo/convex/sharing/roles';
 import { Button } from '@repo/ui/components/ui/button';
 import {
   Drawer,
@@ -34,6 +35,7 @@ import { useMediaQuery } from '../../../components/editor/useMediaQuery';
 import { HistoryPanel } from '../../../components/HistoryPanel';
 import { ReferencesPanel } from '../../../components/ReferencesPanel';
 import { ResearchPanel } from '../../../components/ResearchPanel';
+import { ShareButton } from '../../../components/ShareDialog';
 import Tiptap from '../../../components/TipTap';
 import { CreateDocumentWizard } from '../../../components/templates/CreateDocumentWizard';
 import { getCitationOrder } from '../../../components/tiptap/CitationNumbering';
@@ -217,6 +219,11 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
 
   const updateDoc = useMutation(api.documents.updateDocument);
   const setDocumentCitationStyle = useMutation(api.documents.setCitationStyle);
+
+  // The caller's role: viewers and commenters get a locked editor. Until it
+  // loads, the editor stays editable, as it always was for workspace members.
+  const access = useQuery(api.sharing.myRole, { documentId: docs._id });
+  const readOnly = access ? !roleAllows(access.role, 'edit') : false;
 
   const {
     state: saveState,
@@ -462,7 +469,12 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
       {activePanel === 'chat' && <Chat />}
       {activePanel === 'activity' && <ContributionsPanel documentId={docs._id} />}
       {activePanel === 'history' && (
-        <HistoryPanel documentId={docs._id} flushSave={flushSave} onRestore={restoreVersion} />
+        <HistoryPanel
+          documentId={docs._id}
+          flushSave={flushSave}
+          onRestore={restoreVersion}
+          readOnly={readOnly}
+        />
       )}
     </>
   );
@@ -489,7 +501,17 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
         onRetrySave={() => void flushSave()}
         onDownloadCopy={downloadCopy}
         onPrint={handlePrint}
+        readOnly={readOnly}
+        share={access && <ShareButton documentId={docs._id} canManage={access.canManage} />}
       />
+
+      {access && readOnly && (
+        <output className="block shrink-0 border-b border-border bg-muted/60 px-4 py-1.5 text-center text-sm text-muted-foreground">
+          {access.role === 'commenter'
+            ? 'You can read this document, comment on it, and use team chat.'
+            : 'You can read this document. Ask its author for edit access to make changes.'}
+        </output>
+      )}
 
       {saveState === 'offline' && (
         <output className="block shrink-0 border-b border-warning/30 bg-warning/10 px-4 py-1.5 text-center text-sm text-foreground">
@@ -499,6 +521,7 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
       )}
 
       <Tiptap
+        readOnly={readOnly}
         initialContent={docs.content}
         onChange={handleEditorChange}
         onEditorReady={setEditorInstance}

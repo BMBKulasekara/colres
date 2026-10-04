@@ -1,5 +1,11 @@
-import { currentUser } from '@clerk/nextjs/server';
+import { auth, currentUser } from '@clerk/nextjs/server';
 import { Liveblocks } from '@liveblocks/node';
+import { api } from '@repo/convex/_generated/api';
+import { type DocumentRole, roleAllows } from '@repo/convex/sharing/roles';
+import { ConvexHttpClient } from 'convex/browser';
+
+/** The permission list `session.allow` takes; the type itself is not exported. */
+type RoomPermissions = Parameters<ReturnType<Liveblocks['prepareSession']>['allow']>[1];
 
 const COLORS = [
   '#e11d48', // rose
@@ -25,6 +31,23 @@ function getRandomColor(id: string) {
   return COLORS[index] || '#e11d48';
 }
 
+/**
+ * What each document role may do in its Liveblocks room: editors write the
+ * text, commenters read it and write comments, viewers only read.
+ */
+function roomPermissions(role: DocumentRole): RoomPermissions {
+  if (roleAllows(role, 'edit')) return ['*:write'];
+  if (roleAllows(role, 'comment')) return ['*:read', 'comments:write'];
+  return ['*:read'];
+}
+
+/**
+ * Issues a Liveblocks access token for one document's room.
+ *
+ * The room is the document id, and access to it is decided by Convex, the
+ * same rule as every other read and write of the document: no role, no
+ * token. The token carries only that room, at that role's level.
+ */
 export async function POST(request: Request) {
   try {
     const user = await currentUser();
@@ -33,7 +56,7 @@ export async function POST(request: Request) {
     }
 
     const { room } = await request.json();
-    if (!room) {
+    if (!room || typeof room !== 'string') {
       return new Response('Missing room ID', { status: 400 });
     }
 
@@ -45,17 +68,35 @@ export async function POST(request: Request) {
       return new Response('Liveblocks secret not configured', { status: 500 });
     }
 
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
+    if (!convexUrl) {
+      console.error('Missing Convex deployment URL (NEXT_PUBLIC_CONVEX_URL or CONVEX_URL).');
+      return new Response('Service unavailable', { status: 503 });
+    }
+
+    // Ask Convex as this user, with the same Clerk token the browser uses.
+    const { getToken } = await auth();
+    const token = await getToken({ template: 'convex' });
+    if (!token) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+    const convex = new ConvexHttpClient(convexUrl);
+    convex.setAuth(token);
+    const role = await convex.query(api.sharing.roomAccess, { room });
+    if (!role) {
+      return new Response('Forbidden', { status: 403 });
+    }
+
     const liveblocks = new Liveblocks({ secret });
 
-    // Ensure the room exists on Liveblocks. Create it if it doesn't.
+    // Ensure the room exists on Liveblocks. Create it if it doesn't. It is
+    // created with no default access: everything goes through tokens.
     try {
       await liveblocks.getRoom(room);
     } catch (error: any) {
       if (error.status === 404) {
         try {
-          await liveblocks.createRoom(room, {
-            defaultAccesses: ['room:write'],
-          });
+          await liveblocks.createRoom(room, { defaultAccesses: [] });
         } catch (createError) {
           console.error('Failed to create room in Liveblocks:', createError);
         }
@@ -66,20 +107,15 @@ export async function POST(request: Request) {
 
     const fullName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Anonymous';
 
-    // Identify the user and return the result
-    const { status, body } = await liveblocks.identifyUser(
-      {
-        userId: user.id,
-        groupIds: [],
+    const session = liveblocks.prepareSession(user.id, {
+      userInfo: {
+        name: fullName,
+        avatar: user.imageUrl || '',
+        color: getRandomColor(user.id),
       },
-      {
-        userInfo: {
-          name: fullName,
-          avatar: user.imageUrl || '',
-          color: getRandomColor(user.id),
-        },
-      }
-    );
+    });
+    session.allow(room, roomPermissions(role));
+    const { status, body } = await session.authorize();
 
     return new Response(body, { status });
   } catch (error) {

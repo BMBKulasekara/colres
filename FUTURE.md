@@ -65,32 +65,43 @@ and compile with no errors and correct citations, figures and references.
 **Done when:** a user can see earlier versions, preview one, and restore it
 without losing the text it replaced.
 
-### Phase 3: Full-text search ⬜
+### Phase 3: Full-text search 🚧
 
 Small, and makes later phases (sharing, notifications) easier to navigate.
 
-| Step | Work |
-|---|---|
-| 3.1 | Optional `plainText` field on documents, filled on save |
-| 3.2 | `searchIndex` on it, with the same filters as the title index |
-| 3.3 | Search box on the documents page that searches title and body |
-| 3.4 | One-off backfill for existing documents |
+| Step | Work | Status |
+|---|---|---|
+| 3.1 | `documentSearch` table holding each document's title and plain text, kept apart from `documents` so saving is untouched | ✅ |
+| 3.2 | `search_text` index filtered by workspace; every hit re-checked against the real document and the bin | ✅ |
+| 3.3 | Cron job every 5 minutes indexes recently saved documents | ✅ |
+| 3.4 | Search box on the documents page: instant title matches, plus body matches with a highlighted excerpt | ✅ |
+| 3.5 | One-off backfill for existing documents (`npx convex run search:_backfill`) | ✅ |
+| 3.6 | Push to Convex, run the backfill on dev and prod, and try it in the browser | ⬜ |
+
+**Limits:** body matches appear up to 5 minutes after a save, and only the
+first 100,000 characters (about 15,000 words) of a document are searchable.
 
 **Done when:** searching a phrase from inside a paper finds that paper.
 
-### Phase 4: Per-document sharing and roles ⬜
+### Phase 4: Per-document sharing and roles 🚧
 
 The biggest change to how access works, so it comes after the safety net of
 version history.
 
-| Step | Work |
-|---|---|
-| 4.1 | `documentMembers` table: document, user, role (`owner`, `editor`, `commenter`, `viewer`) |
-| 4.2 | Extend `requireDocumentAccess` so organization access keeps working unchanged, and direct members are added on top |
-| 4.3 | Share dialog: invite by email, change role, remove |
-| 4.4 | Read-only editor for viewers; comment-only mode for commenters |
-| 4.5 | "Shared with me" list on the documents page |
-| 4.6 | Tests for every role against every mutation |
+| Step | Work | Status |
+|---|---|---|
+| 4.1 | `documentMembers` table keyed by email (invites work before sign-up), roles `editor`, `commenter`, `viewer` | ✅ |
+| 4.2 | `requireDocumentAccess` / `canAccessDocument` take an access level (default "edit"); author and organization access unchanged; read and comment actions opened explicitly | ✅ |
+| 4.3 | **Security fix:** the Liveblocks auth route issued room access to any signed-in user for any room; it now asks Convex and grants per-document, per-role tokens | ✅ |
+| 4.4 | Share dialog: invite by email, change role, remove; only the author and organization members can manage | ✅ |
+| 4.5 | Read-only editor, title and status for viewers and commenters; History panel without naming or restore | ✅ |
+| 4.6 | "Shared with me" section on the documents page | ✅ |
+| 4.7 | Tests for every role against view, comment and edit actions | ✅ |
+| 4.8 | Push to Convex, deploy, and try it with a second account: viewer, commenter, editor, and an outsider | ⬜ |
+
+**Not yet:** invite emails are not sent (Phase 5); shared documents are not in
+search results; an invite only matches if the invitee's Clerk email is the
+same address.
 
 **Done when:** an outside co-author can be invited to one paper with a chosen
 role, and cannot see anything else.
@@ -138,6 +149,9 @@ Independent of each other; pick up between phases.
 - **Recycle-bin purge leaves chat files behind.** `lib/cascade.ts` deletes a
   document's chat rows but not the files in Convex storage that those messages
   attached. Fix before relying on "permanently erased" for files.
+- **Mention names in Liveblocks comments never load.** The
+  `/api/liveblocks-users` routes call admin-only Convex queries without
+  signing in, so they fail for every normal user.
 - **`.bib` titles are not escaped.** `toBibtexEntry` braces capitals in titles
   but does not escape `&`, `%`, `$`, `#` or `_`, so a title such as "R&D" breaks
   BibTeX. Affects both the `.bib` download and the LaTeX export.

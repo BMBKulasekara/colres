@@ -3,6 +3,7 @@ import { internal } from "./_generated/api.js";
 import type { Doc, Id } from "./_generated/dataModel.js";
 import { internalMutation, type MutationCtx, mutation, query } from "./_generated/server.js";
 import { isInTrash, requireDocumentAccess } from "./lib/auth.js";
+import type { AccessLevel } from "./lib/sharing.js";
 import {
   CAPTURE_LOOKBACK_MS,
   autoVersionsToPrune,
@@ -41,11 +42,15 @@ async function latestVersion(ctx: MutationCtx, documentId: Id<"documents">) {
     .first();
 }
 
-/** Loads a version and checks the caller can open its document. */
-async function requireVersion(ctx: Parameters<typeof requireDocumentAccess>[0], id: Id<"documentVersions">) {
+/** Loads a version and checks the caller's access to its document. */
+async function requireVersion(
+  ctx: Parameters<typeof requireDocumentAccess>[0],
+  id: Id<"documentVersions">,
+  need: AccessLevel = "edit"
+) {
   const version = await ctx.db.get(id);
   if (!version) throw new Error("Version not found");
-  const access = await requireDocumentAccess(ctx, version.documentId);
+  const access = await requireDocumentAccess(ctx, version.documentId, need);
   return { version, ...access };
 }
 
@@ -65,7 +70,7 @@ async function pruneAutoVersions(ctx: MutationCtx, documentId: Id<"documents">, 
 export const list = query({
   args: { documentId: v.id("documents") },
   handler: async (ctx, { documentId }) => {
-    await requireDocumentAccess(ctx, documentId);
+    await requireDocumentAccess(ctx, documentId, "view");
     const versions = await ctx.db
       .query("documentVersions")
       .withIndex("by_document_created", (q) => q.eq("documentId", documentId))
@@ -79,7 +84,7 @@ export const list = query({
 export const get = query({
   args: { versionId: v.id("documentVersions") },
   handler: async (ctx, { versionId }) => {
-    const { version } = await requireVersion(ctx, versionId);
+    const { version } = await requireVersion(ctx, versionId, "view");
     return version;
   },
 });

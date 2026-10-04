@@ -11,6 +11,7 @@
     "./chat/attachments": "./convex/lib/chatAttachments.ts",
     "./chat/mentions": "./convex/lib/chatMentions.ts",
     "./references/bibtex": "./convex/lib/citations.ts",
+    "./sharing/roles": "./convex/lib/sharing.ts",
     "./templates/catalog": "./convex/lib/templateCatalog.ts",
     "./trash/policy": "./convex/lib/trashPolicy.ts"
   },

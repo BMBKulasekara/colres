@@ -42,7 +42,7 @@ const attachmentInput = v.object({
 export const generateUploadUrl = mutation({
   args: { documentId: v.string() },
   handler: async (ctx, args) => {
-    await requireDocumentAccessByRef(ctx, args.documentId);
+    await requireDocumentAccessByRef(ctx, args.documentId, 'comment');
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -107,7 +107,7 @@ export const sendMessage = mutation({
   handler: async (ctx, args) => {
     // Sender identity comes from the verified session, never from the client:
     // accepting a senderId argument let anyone post as anyone else.
-    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId, 'comment');
 
     const text = args.text.trim();
     const attachments = args.attachments ?? [];
@@ -168,7 +168,7 @@ export const toggleReaction = mutation({
     if (!message) {
       throw new Error('That message no longer exists.');
     }
-    const { user } = await requireDocumentAccessByRef(ctx, message.documentId);
+    const { user } = await requireDocumentAccessByRef(ctx, message.documentId, 'comment');
 
     const emoji = args.emoji.trim();
     if (!emoji || emoji.length > 8) {
@@ -206,7 +206,7 @@ export const deleteMessage = mutation({
     const message = await ctx.db.get(args.messageId);
     if (!message) return;
 
-    const { user } = await requireDocumentAccessByRef(ctx, message.documentId);
+    const { user } = await requireDocumentAccessByRef(ctx, message.documentId, 'comment');
     if (message.senderId !== user.clerkId) {
       throw new Error('Only the sender can delete a message.');
     }
@@ -228,7 +228,8 @@ export const deleteMessage = mutation({
 });
 
 /**
- * Clerk ids of everyone who can read the document, author first.
+ * Clerk ids of everyone who can read the document, author first, people it
+ * is shared with last.
  *
  * Membership is read from the organisation's own roster rather than by
  * scanning `users` for everyone whose `orgIds` contains this org: the roster
@@ -250,20 +251,34 @@ async function collaboratorIds(ctx: QueryCtx, document: Doc<'documents'>): Promi
     }
   }
 
+  // People the document is shared with, once they have signed up.
+  const shared = await ctx.db
+    .query('documentMembers')
+    .withIndex('by_document_email', (q) => q.eq('documentId', document._id))
+    .collect();
+  for (const member of shared) {
+    const user = await ctx.db
+      .query('users')
+      .withIndex('by_email', (q) => q.eq('email', member.email))
+      .first();
+    if (user && !ids.includes(user.clerkId)) ids.push(user.clerkId);
+  }
+
   return ids;
 }
 
 /**
  * Everyone who can be mentioned in this document's chat.
  *
- * The author plus, for an org document, that organisation's members — which is
- * exactly the set `canAccessDocument` admits, so the picker cannot offer
- * somebody the server would then refuse to record.
+ * The author plus, for an org document, that organisation's members, plus
+ * everyone it is shared with — which is exactly the set `canAccessDocument`
+ * admits, so the picker cannot offer somebody the server would then refuse to
+ * record.
  */
 export const listCollaborators = query({
   args: { documentId: v.string() },
   handler: async (ctx, args) => {
-    const { document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { document } = await requireDocumentAccessByRef(ctx, args.documentId, 'view');
     const ids = await collaboratorIds(ctx, document);
 
     const people = [];
@@ -290,7 +305,7 @@ export const listCollaborators = query({
 export const listMessages = query({
   args: { documentId: v.string() },
   handler: async (ctx, args) => {
-    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId, 'view');
 
     const messages = await ctx.db
       .query('chats')
@@ -369,7 +384,7 @@ export const listMessages = query({
 export const chatUnread = query({
   args: { documentId: v.string() },
   handler: async (ctx, args) => {
-    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId, 'view');
 
     const marker = await ctx.db
       .query('chatReads')
@@ -416,7 +431,7 @@ export const chatUnread = query({
 export const markChatRead = mutation({
   args: { documentId: v.string() },
   handler: async (ctx, args) => {
-    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId, 'view');
 
     const existing = await ctx.db
       .query('chatReads')
@@ -453,7 +468,7 @@ function describeAttachments(attachments: Doc<'chats'>['attachments']): string {
 export const getByDocumentId = query({
   args: { documentId: v.string() },
   handler: async (ctx, args) => {
-    const { document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { document } = await requireDocumentAccessByRef(ctx, args.documentId, 'view');
 
     return await ctx.db
       .query('chats')

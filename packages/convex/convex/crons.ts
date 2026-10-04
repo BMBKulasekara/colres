@@ -1,5 +1,6 @@
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api.js";
+import { INDEX_INTERVAL_MINUTES } from "./lib/searchText.js";
 import { CAPTURE_INTERVAL_MINUTES } from "./lib/versionPolicy.js";
 
 const crons = cronJobs();
@@ -12,6 +13,14 @@ crons.interval(
   "capture document versions",
   { minutes: CAPTURE_INTERVAL_MINUTES },
   internal.versions._captureRecent,
+  {}
+);
+
+// Recently saved documents are refreshed in the full-text search index.
+crons.interval(
+  "index documents for search",
+  { minutes: INDEX_INTERVAL_MINUTES },
+  internal.search._indexRecent,
   {}
 );
 

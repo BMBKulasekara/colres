@@ -11,7 +11,7 @@ export const saveComment = mutation({
     text: v.string(),
   },
   handler: async (ctx, args) => {
-    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId, 'comment');
 
     await bumpContribution(ctx, document._id, user._id, { comments: 1 });
     return await ctx.db.insert('comments', {
@@ -49,7 +49,7 @@ export const syncComments = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const { document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { document } = await requireDocumentAccessByRef(ctx, args.documentId, 'comment');
 
     for (const c of args.comments) {
       const existing = await ctx.db
@@ -82,7 +82,7 @@ export const syncComments = mutation({
 export const getByDocumentId = query({
   args: { documentId: v.string() },
   handler: async (ctx, args) => {
-    const { document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { document } = await requireDocumentAccessByRef(ctx, args.documentId, 'view');
 
     return await ctx.db
       .query('comments')

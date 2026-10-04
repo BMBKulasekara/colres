@@ -73,6 +73,7 @@ export default defineSchema({
     orgIds: v.optional(v.array(v.string())),
   })
     .index("by_clerk_id", ["clerkId"])
+    .index("by_email", ["email"])
     .index("by_role", ["role"])
     .index("by_created", ["createdAt"])
     .searchIndex("search_name", { searchField: "name", filterFields: ["role"] }),
@@ -544,4 +545,48 @@ export default defineSchema({
     createdByName: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_document_created", ["documentId", "createdAt"]),
+
+  /**
+   * The full-text search index for documents: one row per document, holding
+   * its title and body as plain text (see `lib/searchText.ts`).
+   *
+   * Kept apart from `documents` so saving is untouched and the editor's
+   * queries do not carry a second copy of the text. A cron job refreshes rows
+   * for recently saved documents (see `search.ts`), so a body match can lag a
+   * save by a few minutes. `orgId` and `author` only narrow the search; every
+   * hit is checked against the real document before it is returned.
+   */
+  documentSearch: defineTable({
+    documentId: v.id("documents"),
+    orgId: v.optional(v.string()),
+    author: v.id("users"),
+    text: v.string(),
+    /** The document's `updatedAt` when this row was written. */
+    updatedAt: v.number(),
+  })
+    .index("by_document", ["documentId"])
+    .searchIndex("search_text", {
+      searchField: "text",
+      filterFields: ["orgId", "author"],
+    }),
+
+  /**
+   * People a document is shared with outside its workspace (see
+   * `lib/sharing.ts` for what each role allows).
+   *
+   * Keyed by email rather than user id, so a document can be shared with
+   * someone who has not signed up yet: access starts the first time they sign
+   * in with that address. Emails are stored normalised (`normalizeEmail`).
+   * The author and organization members never have rows here; their access
+   * comes from the workspace, as it did before sharing existed.
+   */
+  documentMembers: defineTable({
+    documentId: v.id("documents"),
+    email: v.string(),
+    role: v.union(v.literal("editor"), v.literal("commenter"), v.literal("viewer")),
+    invitedBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_document_email", ["documentId", "email"])
+    .index("by_email", ["email"]),
 });

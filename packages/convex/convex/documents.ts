@@ -152,7 +152,7 @@ export const getDocument = query({
             .first();
 
         if (!document) return null;
-        if (!(await canAccessDocument(ctx, document, user))) return null;
+        if (!(await canAccessDocument(ctx, document, user, "view"))) return null;
         return document;
     },
 });
@@ -167,7 +167,7 @@ export const getDocumentById = query({
 
         const document = await ctx.db.get(args.id);
         if (!document) return null;
-        if (!(await canAccessDocument(ctx, document, user))) return null;
+        if (!(await canAccessDocument(ctx, document, user, "view"))) return null;
         return document;
     },
 });
