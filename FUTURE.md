@@ -49,17 +49,18 @@ citation keys on every citation).
 **Done when:** an IEEE and a plain `article` paper export, upload to Overleaf,
 and compile with no errors and correct citations, figures and references.
 
-### Phase 2: Version history ⬜
+### Phase 2: Version history 🚧
 
-| Step | Work |
-|---|---|
-| 2.1 | `documentVersions` table and `versions.ts` (list, get, create, restore) with access checks |
-| 2.2 | Automatic snapshots: on save, at most one per N minutes of editing, skipping unchanged content |
-| 2.3 | Named versions ("Submitted to journal") from the File menu |
-| 2.4 | History side panel: list, read-only preview, Restore |
-| 2.5 | Restore writes through the editor so collaborators see it live, and snapshots the current text first |
-| 2.6 | Retention: keep named versions; thin out old automatic ones with a cron job |
-| 2.7 | Versions removed with their document in the recycle-bin purge |
+| Step | Work | Status |
+|---|---|---|
+| 2.1 | `documentVersions` table and `versions.ts` (list, get, name, rename, restore) with access checks | ✅ |
+| 2.2 | Automatic versions: a cron job every 10 minutes snapshots documents saved since, skipping unchanged and binned ones | ✅ |
+| 2.3 | Named versions ("Submitted to journal") from the History panel; any version can be named later | ✅ |
+| 2.4 | History side panel: list, sandboxed read-only preview, Restore with confirmation | ✅ |
+| 2.5 | Restore writes through the editor so collaborators see it live, and keeps the replaced text as a version | ✅ |
+| 2.6 | Retention: all automatic versions for 2 days, then one a day for 90 days; named versions kept | ✅ |
+| 2.7 | Versions removed with their document by `cascadeDeleteDocument` | ✅ |
+| 2.8 | Push the schema and cron to Convex (dev, then prod) and try it in the browser with two collaborators | ⬜ |
 
 **Done when:** a user can see earlier versions, preview one, and restore it
 without losing the text it replaced.

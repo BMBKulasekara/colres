@@ -518,4 +518,30 @@ export default defineSchema({
     .index("by_org", ["orgId", "deletedAt"])
     .index("by_author", ["author", "deletedAt"])
     .index("by_purge_at", ["purgeAt"]),
+
+  /**
+   * Earlier states of a document, for the History panel.
+   *
+   * The text is copied from `documents.content` on the server rather than
+   * taken from the client, so a version is always something that was really
+   * saved. Live editing happens in Liveblocks, so restoring is done by the
+   * editor (which syncs it to every collaborator), not by patching this row
+   * back into `documents`.
+   *
+   * - `auto`: taken every few minutes while a document is being edited, and
+   *   thinned out as it ages (see `versions.ts`).
+   * - `named`: saved on purpose, e.g. "Submitted to journal". Never thinned.
+   * - `restore`: the text a restore replaced, so a restore can be undone.
+   */
+  documentVersions: defineTable({
+    documentId: v.id("documents"),
+    title: v.string(),
+    content: v.string(),
+    kind: v.union(v.literal("auto"), v.literal("named"), v.literal("restore")),
+    name: v.optional(v.string()),
+    /** Absent for automatic versions, which can span several editors. */
+    createdBy: v.optional(v.id("users")),
+    createdByName: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_document_created", ["documentId", "createdAt"]),
 });

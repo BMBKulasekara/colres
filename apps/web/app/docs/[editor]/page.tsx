@@ -31,6 +31,7 @@ import {
 } from '../../../components/editor/SidePanel';
 import { useAutosave } from '../../../components/editor/useAutosave';
 import { useMediaQuery } from '../../../components/editor/useMediaQuery';
+import { HistoryPanel } from '../../../components/HistoryPanel';
 import { ReferencesPanel } from '../../../components/ReferencesPanel';
 import { ResearchPanel } from '../../../components/ResearchPanel';
 import Tiptap from '../../../components/TipTap';
@@ -342,6 +343,18 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
     );
   }, [editorInstance, title, docs.templateSnapshot, docs.slug, citationStyle, references]);
 
+  /**
+   * History › Restore. The text goes in through the editor, so Liveblocks
+   * carries it to every collaborator and the autosave writes it to Convex,
+   * exactly as if it had been typed.
+   */
+  const restoreVersion = (version: { title: string; content: string }) => {
+    if (!editorInstance) return;
+    editorInstance.commands.setContent(version.content, { emitUpdate: true });
+    if (version.title !== title) handleTitleChange(version.title);
+    void flushSave();
+  };
+
   /** File › New document: the same template-or-blank chooser the home page opens. */
   const [wizardOpen, setWizardOpen] = useState(false);
   const openNewDocument = useCallback(() => {
@@ -448,6 +461,9 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
       {activePanel === 'comments' && <CommentsList />}
       {activePanel === 'chat' && <Chat />}
       {activePanel === 'activity' && <ContributionsPanel documentId={docs._id} />}
+      {activePanel === 'history' && (
+        <HistoryPanel documentId={docs._id} flushSave={flushSave} onRestore={restoreVersion} />
+      )}
     </>
   );
 

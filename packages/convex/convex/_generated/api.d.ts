@@ -32,6 +32,7 @@ import type * as lib_templateCatalog from "../lib/templateCatalog.js";
 import type * as lib_templateContent from "../lib/templateContent.js";
 import type * as lib_templateTypes from "../lib/templateTypes.js";
 import type * as lib_trashPolicy from "../lib/trashPolicy.js";
+import type * as lib_versionPolicy from "../lib/versionPolicy.js";
 import type * as organizations from "../organizations.js";
 import type * as references from "../references.js";
 import type * as research from "../research.js";
@@ -39,6 +40,7 @@ import type * as seedTemplates from "../seedTemplates.js";
 import type * as templates from "../templates.js";
 import type * as trash from "../trash.js";
 import type * as users from "../users.js";
+import type * as versions from "../versions.js";
 
 import type {
   ApiFromModules,
@@ -71,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   "lib/templateContent": typeof lib_templateContent;
   "lib/templateTypes": typeof lib_templateTypes;
   "lib/trashPolicy": typeof lib_trashPolicy;
+  "lib/versionPolicy": typeof lib_versionPolicy;
   organizations: typeof organizations;
   references: typeof references;
   research: typeof research;
@@ -78,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   templates: typeof templates;
   trash: typeof trash;
   users: typeof users;
+  versions: typeof versions;
 }>;
 
 /**
