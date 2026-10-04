@@ -12,7 +12,7 @@ import { cn } from '@repo/ui/lib/utils';
 import { ArrowRight, ChevronRight, Menu } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ctaLabels, links, mainNav } from '../../_lib/site';
+import { ctaLabels, links, mainNav, type NavLink } from '../../_lib/site';
 import { useActiveSection } from '../../_lib/use-active-section';
 import { useScrolled } from '../../_lib/use-scrolled';
 import { Container } from '../ui/container';
@@ -21,7 +21,8 @@ import { Logo } from '../ui/logo';
 
 const sectionIds = mainNav.filter((l) => l.href.startsWith('#')).map((l) => l.href.slice(1));
 
-export function SiteNav() {
+/** `nav` defaults to the home page's in-page anchors; sub-pages pass `subPageNav`. */
+export function SiteNav({ nav = mainNav }: { nav?: NavLink[] }) {
   const scrolled = useScrolled(8);
   const active = useActiveSection(sectionIds);
 
@@ -39,7 +40,7 @@ export function SiteNav() {
 
         <nav aria-label="Main" className="hidden lg:block">
           <ul className="flex items-center gap-9">
-            {mainNav.map((link) => {
+            {nav.map((link) => {
               const isActive = active !== null && link.href === `#${active}`;
               return (
                 <li key={link.label}>
@@ -71,13 +72,13 @@ export function SiteNav() {
           </CtaLink>
         </div>
 
-        <MobileMenu />
+        <MobileMenu nav={nav} />
       </Container>
     </header>
   );
 }
 
-function MobileMenu() {
+function MobileMenu({ nav }: { nav: NavLink[] }) {
   const [open, setOpen] = useState(false);
 
   // Close the drawer if the viewport grows past the mobile breakpoint.
@@ -111,7 +112,7 @@ function MobileMenu() {
 
         <nav aria-label="Mobile">
           <ul>
-            {mainNav.map((link) => (
+            {nav.map((link) => (
               <li key={link.label} className="border-slate-200 border-b">
                 <SheetClose asChild>
                   <Link
