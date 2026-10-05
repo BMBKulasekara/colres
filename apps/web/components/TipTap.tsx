@@ -156,6 +156,10 @@ interface TipTapEditorProps {
   panel?: ReactNode;
   /** The panel's icon rail, on the far right edge. */
   rail?: ReactNode;
+  /** For people the document is shared with as viewer or commenter. */
+  readOnly?: boolean;
+  /** The document's writing goals, shown at the top of the outline. */
+  goals?: { wordTarget?: number; deadline?: number };
 }
 
 /** How many times each source is cited, for the citation picker. */
@@ -186,8 +190,13 @@ export default function TipTapEditor({
   onFocusModeChange,
   panel,
   rail,
+  readOnly = false,
+  goals,
 }: TipTapEditorProps) {
-  const [isEditable, setIsEditable] = useState(true);
+  const [editMode, setIsEditable] = useState(true);
+  // Read-only wins over the Editing/Reading switch; the server and the
+  // Liveblocks room refuse edits from these users anyway.
+  const isEditable = editMode && !readOnly;
   /** Focus mode leaves only the page: no outline, no side panel. */
   const [focusMode, setFocusMode] = useState(false);
 
@@ -969,6 +978,8 @@ export default function TipTapEditor({
                 citedCount={citedCount}
                 onJumpToSection={jumpTo}
                 onJumpToFloat={jumpToFloat}
+                wordTarget={goals?.wordTarget}
+                deadline={goals?.deadline}
               />
             </aside>
           </>

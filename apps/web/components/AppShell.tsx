@@ -8,6 +8,7 @@ import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { usePathname } from 'next/navigation';
 import { useMemo } from 'react';
 import { ClerkConvexSync } from './ClerkConvexSync';
+import { NotificationBell } from './NotificationBell';
 import { AppSidebar } from './shell/AppSidebar';
 
 /** Paths under /docs that are pages of the app rather than a document's slug. */
@@ -97,6 +98,7 @@ function WorkspaceFrame({
       <SidebarInset>
         {/* The account corner: which organization is active, and who is signed in. */}
         <header className="flex h-14 shrink-0 items-center justify-end gap-3 border-b border-border bg-card px-4">
+          <NotificationBell />
           <OrganizationSwitcher />
           <UserButton />
         </header>

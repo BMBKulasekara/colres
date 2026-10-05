@@ -221,3 +221,33 @@ export function sectionAt(sections: readonly OutlineSection[], pos: number): Out
   }
   return found;
 }
+
+/**
+ * The template's sections with the author's own targets laid over them: a
+ * target for a section the template names replaces its target (and lifts any
+ * limit below it); one for a section it does not name is added as optional.
+ */
+export function mergeSectionTargets(
+  templateSections: readonly TemplateSection[] = [],
+  targets: readonly { title: string; words: number }[] = []
+): TemplateSection[] {
+  const merged = templateSections.map((section) => ({ ...section }));
+  for (const target of targets) {
+    const key = canonicalTitle(target.title);
+    const existing = merged.find((section) => canonicalTitle(section.title) === key);
+    if (existing) {
+      existing.targetWords = target.words;
+      if (existing.maxWords !== undefined && existing.maxWords < target.words) {
+        existing.maxWords = undefined;
+      }
+    } else {
+      merged.push({
+        key: `goal:${key}`,
+        title: target.title,
+        required: false,
+        targetWords: target.words,
+      });
+    }
+  }
+  return merged;
+}

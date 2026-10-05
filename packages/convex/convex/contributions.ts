@@ -42,7 +42,7 @@ export const forDocument = query({
   handler: async (ctx, args) => {
     const user = await getUserOrNull(ctx);
     const document = await ctx.db.get(args.documentId);
-    if (!user || !document || !(await canAccessDocument(ctx, document, user))) return null;
+    if (!user || !document || !(await canAccessDocument(ctx, document, user, "view"))) return null;
     return { ...(await summarizeDocument(ctx, document._id)), viewerId: user._id };
   },
 });

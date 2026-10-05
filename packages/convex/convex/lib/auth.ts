@@ -1,5 +1,6 @@
 import type { Doc } from "../_generated/dataModel.js";
 import type { MutationCtx, QueryCtx } from "../_generated/server.js";
+import { type AccessLevel, type DocumentRole, normalizeEmail, roleAllows } from "./sharing.js";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -84,32 +85,62 @@ export async function isInTrash(ctx: Ctx, documentId: Doc<"documents">["_id"]): 
 }
 
 /**
- * True when the caller may read/write `document`. A binned document is closed
- * to everything but the bin itself (see trash.ts), which is what hides it
- * from the editor, chat, comments and references at once.
+ * The caller's role on `document`, or null for none. The author and the
+ * organization's members come first and are unaffected by sharing; anyone
+ * else is looked up in `documentMembers` by their email.
+ *
+ * A binned document is closed to everything but the bin itself (see
+ * trash.ts), which is what hides it from the editor, chat, comments and
+ * references at once.
+ */
+export async function documentRole(
+  ctx: Ctx,
+  document: Doc<"documents">,
+  user: Doc<"users">
+): Promise<DocumentRole | null> {
+  if (await isInTrash(ctx, document._id)) return null;
+  if (document.author === user._id) return "owner";
+  if (isDocumentMember(document, user)) return "member";
+
+  const shared = await ctx.db
+    .query("documentMembers")
+    .withIndex("by_document_email", (q) =>
+      q.eq("documentId", document._id).eq("email", normalizeEmail(user.email))
+    )
+    .first();
+  return shared?.role ?? null;
+}
+
+/**
+ * True when the caller may do something needing `need` with `document`.
+ *
+ * `need` defaults to "edit", so a check that does not say otherwise stays
+ * closed to people the document was shared with as commenter or viewer.
  */
 export async function canAccessDocument(
   ctx: Ctx,
   document: Doc<"documents">,
-  user: Doc<"users">
+  user: Doc<"users">,
+  need: AccessLevel = "edit"
 ): Promise<boolean> {
-  if (!isDocumentMember(document, user)) return false;
-  return !(await isInTrash(ctx, document._id));
+  return roleAllows(await documentRole(ctx, document, user), need);
 }
 
 export async function requireDocumentAccess(
   ctx: Ctx,
-  documentId: Doc<"documents">["_id"]
-): Promise<{ user: Doc<"users">; document: Doc<"documents"> }> {
+  documentId: Doc<"documents">["_id"],
+  need: AccessLevel = "edit"
+): Promise<{ user: Doc<"users">; document: Doc<"documents">; role: DocumentRole }> {
   const user = await requireUser(ctx);
   const document = await ctx.db.get(documentId);
   if (!document) {
     throw new Error("Document not found");
   }
-  if (!(await canAccessDocument(ctx, document, user))) {
+  const role = await documentRole(ctx, document, user);
+  if (!role || !roleAllows(role, need)) {
     throw new Error("Forbidden: you do not have access to this document");
   }
-  return { user, document };
+  return { user, document, role };
 }
 
 /**
@@ -119,8 +150,9 @@ export async function requireDocumentAccess(
  */
 export async function requireDocumentAccessByRef(
   ctx: Ctx,
-  ref: string
-): Promise<{ user: Doc<"users">; document: Doc<"documents"> }> {
+  ref: string,
+  need: AccessLevel = "edit"
+): Promise<{ user: Doc<"users">; document: Doc<"documents">; role: DocumentRole }> {
   const user = await requireUser(ctx);
 
   const bySlug = await ctx.db
@@ -142,8 +174,9 @@ export async function requireDocumentAccessByRef(
   if (!document) {
     throw new Error("Document not found");
   }
-  if (!(await canAccessDocument(ctx, document, user))) {
+  const role = await documentRole(ctx, document, user);
+  if (!role || !roleAllows(role, need)) {
     throw new Error("Forbidden: you do not have access to this document");
   }
-  return { user, document };
+  return { user, document, role };
 }

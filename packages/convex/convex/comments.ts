@@ -2,6 +2,7 @@ import { v } from 'convex/values';
 import { mutation, query } from './_generated/server.js';
 import { requireDocumentAccessByRef } from './lib/auth.js';
 import { bumpContribution } from './lib/contributions.js';
+import { commentBodyText, notify, usersByClerkIds } from './lib/notify.js';
 
 export const saveComment = mutation({
   args: {
@@ -11,7 +12,7 @@ export const saveComment = mutation({
     text: v.string(),
   },
   handler: async (ctx, args) => {
-    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { user, document } = await requireDocumentAccessByRef(ctx, args.documentId, 'comment');
 
     await bumpContribution(ctx, document._id, user._id, { comments: 1 });
     return await ctx.db.insert('comments', {
@@ -49,7 +50,19 @@ export const syncComments = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const { document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { document } = await requireDocumentAccessByRef(ctx, args.documentId, 'comment');
+
+    // A comment is a reply when its thread was already saved before this
+    // sync. Threads first seen now (including old ones never synced) notify
+    // nobody, so opening an old document does not flood the bell.
+    const knownThreads = new Set<string>();
+    for (const threadId of new Set(args.comments.map((c) => c.threadId))) {
+      const saved = await ctx.db
+        .query('comments')
+        .withIndex('by_thread_id', (q) => q.eq('threadId', threadId))
+        .first();
+      if (saved) knownThreads.add(threadId);
+    }
 
     for (const c of args.comments) {
       const existing = await ctx.db
@@ -75,6 +88,23 @@ export const syncComments = mutation({
         senderAvatar: sender?.imageUrl || '',
         createdAt: Date.now(),
       });
+
+      if (sender && knownThreads.has(c.threadId)) {
+        const earlier = await ctx.db
+          .query('comments')
+          .withIndex('by_thread_id', (q) => q.eq('threadId', c.threadId))
+          .collect();
+        const participants = await usersByClerkIds(
+          ctx,
+          earlier.map((comment) => comment.senderId)
+        );
+        await notify(ctx, participants, {
+          kind: 'comment_reply',
+          documentId: document._id,
+          actor: sender,
+          preview: commentBodyText(c.text),
+        });
+      }
     }
   },
 });
@@ -82,7 +112,7 @@ export const syncComments = mutation({
 export const getByDocumentId = query({
   args: { documentId: v.string() },
   handler: async (ctx, args) => {
-    const { document } = await requireDocumentAccessByRef(ctx, args.documentId);
+    const { document } = await requireDocumentAccessByRef(ctx, args.documentId, 'view');
 
     return await ctx.db
       .query('comments')

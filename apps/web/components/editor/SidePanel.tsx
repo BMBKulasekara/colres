@@ -5,15 +5,24 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@repo/ui/components/ui/
 import {
   Activity,
   BookMarked,
+  History,
   type LucideIcon,
   MessageSquare,
   MessagesSquare,
+  Target,
   Telescope,
   X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-export type PanelId = 'research' | 'references' | 'comments' | 'chat' | 'activity';
+export type PanelId =
+  | 'research'
+  | 'references'
+  | 'comments'
+  | 'chat'
+  | 'activity'
+  | 'history'
+  | 'goals';
 
 export const PANELS: { id: PanelId; title: string; icon: LucideIcon; description: string }[] = [
   {
@@ -40,6 +49,18 @@ export const PANELS: { id: PanelId; title: string; icon: LucideIcon; description
     title: 'Activity',
     icon: Activity,
     description: 'Who contributed what over the last 30 days.',
+  },
+  {
+    id: 'history',
+    title: 'History',
+    icon: History,
+    description: 'Earlier versions of this document.',
+  },
+  {
+    id: 'goals',
+    title: 'Goals',
+    icon: Target,
+    description: 'Word targets and the submission deadline.',
   },
 ];
 

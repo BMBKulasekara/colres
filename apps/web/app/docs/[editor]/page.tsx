@@ -4,6 +4,7 @@ import { useThreads } from '@liveblocks/react/suspense';
 import { Thread } from '@liveblocks/react-ui';
 import { api } from '@repo/convex/_generated/api';
 import type { Doc, Id } from '@repo/convex/_generated/dataModel';
+import { roleAllows } from '@repo/convex/sharing/roles';
 import { Button } from '@repo/ui/components/ui/button';
 import {
   Drawer,
@@ -31,14 +32,19 @@ import {
 } from '../../../components/editor/SidePanel';
 import { useAutosave } from '../../../components/editor/useAutosave';
 import { useMediaQuery } from '../../../components/editor/useMediaQuery';
+import { GoalsPanel } from '../../../components/GoalsPanel';
+import { HistoryPanel } from '../../../components/HistoryPanel';
 import { ReferencesPanel } from '../../../components/ReferencesPanel';
 import { ResearchPanel } from '../../../components/ResearchPanel';
+import { ShareButton } from '../../../components/ShareDialog';
 import Tiptap from '../../../components/TipTap';
 import { CreateDocumentWizard } from '../../../components/templates/CreateDocumentWizard';
 import { getCitationOrder } from '../../../components/tiptap/CitationNumbering';
 import { printDocument } from '../../../components/tiptap/printDocument';
 import type { CitationStyle } from '../../../lib/citationFormat';
+import { mergeSectionTargets } from '../../../lib/documentOutline';
 import { type DocumentStatus, documentStatus, statusValue } from '../../../lib/documentStatus';
+import { downloadLatexZip } from '../../../lib/latexDownload';
 import { getPageGeometry } from '../../../lib/pageGeometry';
 import { useNotificationSettings } from '../../../lib/useNotificationSettings';
 import { Room } from './Room';
@@ -216,6 +222,11 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
   const updateDoc = useMutation(api.documents.updateDocument);
   const setDocumentCitationStyle = useMutation(api.documents.setCitationStyle);
 
+  // The caller's role: viewers and commenters get a locked editor. Until it
+  // loads, the editor stays editable, as it always was for workspace members.
+  const access = useQuery(api.sharing.myRole, { documentId: docs._id });
+  const readOnly = access ? !roleAllows(access.role, 'edit') : false;
+
   const {
     state: saveState,
     lastSavedAt,
@@ -243,6 +254,12 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
   const template = useQuery(
     api.templates.getTemplateById,
     docs.templateId ? { id: docs.templateId } : 'skip'
+  );
+
+  // The template's section budgets with the authors' own targets over them.
+  const sectionBudgets = useMemo(
+    () => mergeSectionTargets(template?.sections, docs.sectionTargets),
+    [template?.sections, docs.sectionTargets]
   );
 
   const geometry = useMemo(
@@ -318,6 +335,40 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
     link.click();
     URL.revokeObjectURL(url);
   }, [editorInstance, title, docs.slug]);
+
+  /** File › Download › LaTeX project: main.tex, references.bib and figures, zipped. */
+  const downloadLatex = useCallback(() => {
+    if (!editorInstance) return;
+    const snapshot = docs.templateSnapshot;
+    void downloadLatexZip(
+      {
+        title,
+        doc: editorInstance.getJSON(),
+        template: snapshot && {
+          documentClass: snapshot.documentClass,
+          classOptions: snapshot.classOptions,
+          engine: snapshot.engine,
+          bibTool: snapshot.bibTool,
+          citationStyle: snapshot.citationStyle,
+        },
+        citationStyle,
+        references: references ?? [],
+      },
+      docs.slug || 'document'
+    );
+  }, [editorInstance, title, docs.templateSnapshot, docs.slug, citationStyle, references]);
+
+  /**
+   * History › Restore. The text goes in through the editor, so Liveblocks
+   * carries it to every collaborator and the autosave writes it to Convex,
+   * exactly as if it had been typed.
+   */
+  const restoreVersion = (version: { title: string; content: string }) => {
+    if (!editorInstance) return;
+    editorInstance.commands.setContent(version.content, { emitUpdate: true });
+    if (version.title !== title) handleTitleChange(version.title);
+    void flushSave();
+  };
 
   /** File › New document: the same template-or-blank chooser the home page opens. */
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -425,6 +476,29 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
       {activePanel === 'comments' && <CommentsList />}
       {activePanel === 'chat' && <Chat />}
       {activePanel === 'activity' && <ContributionsPanel documentId={docs._id} />}
+      {activePanel === 'goals' && (
+        <GoalsPanel
+          // Remounted when the goals change elsewhere, so the form shows them.
+          key={`${docs.wordTarget}-${docs.deadline}-${JSON.stringify(docs.sectionTargets ?? [])}`}
+          documentId={docs._id}
+          goals={{
+            wordTarget: docs.wordTarget,
+            deadline: docs.deadline,
+            sectionTargets: docs.sectionTargets,
+          }}
+          editor={editorInstance}
+          templateSections={sectionBudgets}
+          readOnly={readOnly}
+        />
+      )}
+      {activePanel === 'history' && (
+        <HistoryPanel
+          documentId={docs._id}
+          flushSave={flushSave}
+          onRestore={restoreVersion}
+          readOnly={readOnly}
+        />
+      )}
     </>
   );
 
@@ -450,7 +524,17 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
         onRetrySave={() => void flushSave()}
         onDownloadCopy={downloadCopy}
         onPrint={handlePrint}
+        readOnly={readOnly}
+        share={access && <ShareButton documentId={docs._id} canManage={access.canManage} />}
       />
+
+      {access && readOnly && (
+        <output className="block shrink-0 border-b border-border bg-muted/60 px-4 py-1.5 text-center text-sm text-muted-foreground">
+          {access.role === 'commenter'
+            ? 'You can read this document, comment on it, and use team chat.'
+            : 'You can read this document. Ask its author for edit access to make changes.'}
+        </output>
+      )}
 
       {saveState === 'offline' && (
         <output className="block shrink-0 border-b border-warning/30 bg-warning/10 px-4 py-1.5 text-center text-sm text-foreground">
@@ -460,12 +544,14 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
       )}
 
       <Tiptap
+        readOnly={readOnly}
         initialContent={docs.content}
         onChange={handleEditorChange}
         onEditorReady={setEditorInstance}
         classOptions={docs.templateSnapshot?.classOptions}
         documentClass={docs.templateSnapshot?.documentClass}
-        templateSections={template?.sections}
+        templateSections={sectionBudgets}
+        goals={{ wordTarget: docs.wordTarget, deadline: docs.deadline }}
         references={references}
         citationStyle={citationStyle}
         onCitationOrderChange={setCitationOrder}
@@ -478,6 +564,7 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
           onSave: () => void flushSave(),
           onPrint: handlePrint,
           onDownloadHtml: downloadCopy,
+          onDownloadLatex: downloadLatex,
           activePanel,
           onSelectPanel: selectPanel,
         }}

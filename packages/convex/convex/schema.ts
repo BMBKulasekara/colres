@@ -73,6 +73,7 @@ export default defineSchema({
     orgIds: v.optional(v.array(v.string())),
   })
     .index("by_clerk_id", ["clerkId"])
+    .index("by_email", ["email"])
     .index("by_role", ["role"])
     .index("by_created", ["createdAt"])
     .searchIndex("search_name", { searchField: "name", filterFields: ["role"] }),
@@ -99,6 +100,18 @@ export default defineSchema({
     // snapshot is copied at creation time so an admin editing the template
     // later never changes the compilation contract of documents already based
     // on it.
+    // Writing goals, set by the authors (see goals.ts). All optional: a
+    // document without them shows only the template's section budgets.
+    /** Word target for the whole document. */
+    wordTarget: v.optional(v.number()),
+    /** Submission deadline, epoch milliseconds (the end of the chosen day). */
+    deadline: v.optional(v.number()),
+    /**
+     * Word targets for sections by heading title, overriding the template's
+     * for the same section and adding targets for sections it does not name.
+     */
+    sectionTargets: v.optional(v.array(v.object({ title: v.string(), words: v.number() }))),
+
     templateId: v.optional(v.id("templates")),
     templateVersion: v.optional(v.number()),
     templateSnapshot: v.optional(
@@ -119,6 +132,7 @@ export default defineSchema({
     .index("by_created", ["createdAt"])
     .index("by_updated", ["updatedAt"])
     .index("by_status_updated", ["status", "updatedAt"])
+    .index("by_deadline", ["deadline"])
     .searchIndex("search_title", {
       searchField: "title",
       filterFields: ["status", "orgId", "author", "templateId"],
@@ -518,4 +532,107 @@ export default defineSchema({
     .index("by_org", ["orgId", "deletedAt"])
     .index("by_author", ["author", "deletedAt"])
     .index("by_purge_at", ["purgeAt"]),
+
+  /**
+   * Earlier states of a document, for the History panel.
+   *
+   * The text is copied from `documents.content` on the server rather than
+   * taken from the client, so a version is always something that was really
+   * saved. Live editing happens in Liveblocks, so restoring is done by the
+   * editor (which syncs it to every collaborator), not by patching this row
+   * back into `documents`.
+   *
+   * - `auto`: taken every few minutes while a document is being edited, and
+   *   thinned out as it ages (see `versions.ts`).
+   * - `named`: saved on purpose, e.g. "Submitted to journal". Never thinned.
+   * - `restore`: the text a restore replaced, so a restore can be undone.
+   */
+  documentVersions: defineTable({
+    documentId: v.id("documents"),
+    title: v.string(),
+    content: v.string(),
+    kind: v.union(v.literal("auto"), v.literal("named"), v.literal("restore")),
+    name: v.optional(v.string()),
+    /** Absent for automatic versions, which can span several editors. */
+    createdBy: v.optional(v.id("users")),
+    createdByName: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_document_created", ["documentId", "createdAt"]),
+
+  /**
+   * The full-text search index for documents: one row per document, holding
+   * its title and body as plain text (see `lib/searchText.ts`).
+   *
+   * Kept apart from `documents` so saving is untouched and the editor's
+   * queries do not carry a second copy of the text. A cron job refreshes rows
+   * for recently saved documents (see `search.ts`), so a body match can lag a
+   * save by a few minutes. `orgId` and `author` only narrow the search; every
+   * hit is checked against the real document before it is returned.
+   */
+  documentSearch: defineTable({
+    documentId: v.id("documents"),
+    orgId: v.optional(v.string()),
+    author: v.id("users"),
+    text: v.string(),
+    /** The document's `updatedAt` when this row was written. */
+    updatedAt: v.number(),
+  })
+    .index("by_document", ["documentId"])
+    .searchIndex("search_text", {
+      searchField: "text",
+      filterFields: ["orgId", "author"],
+    }),
+
+  /**
+   * People a document is shared with outside its workspace (see
+   * `lib/sharing.ts` for what each role allows).
+   *
+   * Keyed by email rather than user id, so a document can be shared with
+   * someone who has not signed up yet: access starts the first time they sign
+   * in with that address. Emails are stored normalised (`normalizeEmail`).
+   * The author and organization members never have rows here; their access
+   * comes from the workspace, as it did before sharing existed.
+   */
+  documentMembers: defineTable({
+    documentId: v.id("documents"),
+    email: v.string(),
+    role: v.union(v.literal("editor"), v.literal("commenter"), v.literal("viewer")),
+    invitedBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_document_email", ["documentId", "email"])
+    .index("by_email", ["email"]),
+
+  /**
+   * The bell: things that happened to you in a document you were not looking
+   * at. Written as a side effect of the action itself (see
+   * `lib/notify.ts`), never by the client, and pruned after 90 days.
+   */
+  notifications: defineTable({
+    /** Who it is for. */
+    userId: v.id("users"),
+    kind: v.union(
+      v.literal("mention"),
+      v.literal("chat_reply"),
+      v.literal("comment_reply"),
+      v.literal("share"),
+      v.literal("deadline")
+    ),
+    documentId: v.id("documents"),
+    actorName: v.string(),
+    actorAvatar: v.string(),
+    /** A short excerpt of the message or comment; the role for a share. */
+    preview: v.string(),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+    /**
+     * Unused. An earlier, uncommitted version of notifications wrote it to
+     * some dev rows, and Convex rejects a schema those rows would break.
+     */
+    seenAt: v.optional(v.number()),
+  })
+    .index("by_user_created", ["userId", "createdAt"])
+    .index("by_user_read", ["userId", "readAt"])
+    .index("by_document", ["documentId"])
+    .index("by_created", ["createdAt"]),
 });
