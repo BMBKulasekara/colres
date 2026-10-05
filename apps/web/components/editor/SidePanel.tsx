@@ -9,12 +9,20 @@ import {
   type LucideIcon,
   MessageSquare,
   MessagesSquare,
+  Target,
   Telescope,
   X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-export type PanelId = 'research' | 'references' | 'comments' | 'chat' | 'activity' | 'history';
+export type PanelId =
+  | 'research'
+  | 'references'
+  | 'comments'
+  | 'chat'
+  | 'activity'
+  | 'history'
+  | 'goals';
 
 export const PANELS: { id: PanelId; title: string; icon: LucideIcon; description: string }[] = [
   {
@@ -47,6 +55,12 @@ export const PANELS: { id: PanelId; title: string; icon: LucideIcon; description
     title: 'History',
     icon: History,
     description: 'Earlier versions of this document.',
+  },
+  {
+    id: 'goals',
+    title: 'Goals',
+    icon: Target,
+    description: 'Word targets and the submission deadline.',
   },
 ];
 

@@ -32,6 +32,7 @@ import {
 } from '../../../components/editor/SidePanel';
 import { useAutosave } from '../../../components/editor/useAutosave';
 import { useMediaQuery } from '../../../components/editor/useMediaQuery';
+import { GoalsPanel } from '../../../components/GoalsPanel';
 import { HistoryPanel } from '../../../components/HistoryPanel';
 import { ReferencesPanel } from '../../../components/ReferencesPanel';
 import { ResearchPanel } from '../../../components/ResearchPanel';
@@ -41,6 +42,7 @@ import { CreateDocumentWizard } from '../../../components/templates/CreateDocume
 import { getCitationOrder } from '../../../components/tiptap/CitationNumbering';
 import { printDocument } from '../../../components/tiptap/printDocument';
 import type { CitationStyle } from '../../../lib/citationFormat';
+import { mergeSectionTargets } from '../../../lib/documentOutline';
 import { type DocumentStatus, documentStatus, statusValue } from '../../../lib/documentStatus';
 import { downloadLatexZip } from '../../../lib/latexDownload';
 import { getPageGeometry } from '../../../lib/pageGeometry';
@@ -252,6 +254,12 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
   const template = useQuery(
     api.templates.getTemplateById,
     docs.templateId ? { id: docs.templateId } : 'skip'
+  );
+
+  // The template's section budgets with the authors' own targets over them.
+  const sectionBudgets = useMemo(
+    () => mergeSectionTargets(template?.sections, docs.sectionTargets),
+    [template?.sections, docs.sectionTargets]
   );
 
   const geometry = useMemo(
@@ -468,6 +476,21 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
       {activePanel === 'comments' && <CommentsList />}
       {activePanel === 'chat' && <Chat />}
       {activePanel === 'activity' && <ContributionsPanel documentId={docs._id} />}
+      {activePanel === 'goals' && (
+        <GoalsPanel
+          // Remounted when the goals change elsewhere, so the form shows them.
+          key={`${docs.wordTarget}-${docs.deadline}-${JSON.stringify(docs.sectionTargets ?? [])}`}
+          documentId={docs._id}
+          goals={{
+            wordTarget: docs.wordTarget,
+            deadline: docs.deadline,
+            sectionTargets: docs.sectionTargets,
+          }}
+          editor={editorInstance}
+          templateSections={sectionBudgets}
+          readOnly={readOnly}
+        />
+      )}
       {activePanel === 'history' && (
         <HistoryPanel
           documentId={docs._id}
@@ -527,7 +550,8 @@ function EditorContent({ docs }: { docs: Doc<'documents'> }) {
         onEditorReady={setEditorInstance}
         classOptions={docs.templateSnapshot?.classOptions}
         documentClass={docs.templateSnapshot?.documentClass}
-        templateSections={template?.sections}
+        templateSections={sectionBudgets}
+        goals={{ wordTarget: docs.wordTarget, deadline: docs.deadline }}
         references={references}
         citationStyle={citationStyle}
         onCitationOrderChange={setCitationOrder}

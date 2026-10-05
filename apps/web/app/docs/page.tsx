@@ -2,6 +2,7 @@
 import { useAuth, useOrganization, useUser } from '@clerk/nextjs';
 import { api } from '@repo/convex/_generated/api';
 import type { Doc, Id } from '@repo/convex/_generated/dataModel';
+import { deadlineLabel } from '@repo/convex/goals/policy';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,9 +26,11 @@ import { SidebarTrigger } from '@repo/ui/components/ui/sidebar';
 import { Skeleton } from '@repo/ui/components/ui/skeleton';
 import { useMutation, useQuery } from 'convex/react';
 import {
+  CalendarClock,
   ChevronDown,
   ExternalLink,
   FilePlus2,
+  FileUp,
   LayoutTemplate,
   Loader2,
   MoreHorizontal,
@@ -37,8 +40,9 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { DocumentSearchInput, DocumentSearchResults } from '../../components/DocumentSearch';
+import { DocxImport, type DocxImportHandle } from '../../components/DocxImport';
 import { SharedWithMe } from '../../components/SharedWithMe';
 import { StatusChip } from '../../components/StatusChip';
 import { CreateDocumentWizard } from '../../components/templates/CreateDocumentWizard';
@@ -85,6 +89,7 @@ export default function Docs() {
   const moveToTrash = useMutation(api.trash.moveToTrash);
 
   const [wizard, setWizard] = useState<WizardTarget>(null);
+  const docxImport = useRef<DocxImportHandle>(null);
   const [isCreatingBlank, setIsCreatingBlank] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Doc<'documents'> | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,7 +155,9 @@ export default function Docs() {
             onCreateBlank={createBlank}
             onUseTemplate={(templateId) => setWizard({ templateId })}
             onBrowseTemplates={() => setWizard({})}
+            onImportDocx={() => docxImport.current?.open()}
           />
+          <DocxImport ref={docxImport} orgId={organization?.id} />
         </header>
 
         {isLoading ? (
@@ -243,12 +250,14 @@ function NewDocumentButton({
   onCreateBlank,
   onUseTemplate,
   onBrowseTemplates,
+  onImportDocx,
 }: {
   isCreating: boolean;
   quickTemplates: QuickTemplate[];
   onCreateBlank: () => void;
   onUseTemplate: (templateId: string) => void;
   onBrowseTemplates: () => void;
+  onImportDocx: () => void;
 }) {
   return (
     <div className="flex items-center self-start sm:self-auto">
@@ -290,6 +299,11 @@ function NewDocumentButton({
               Open template gallery
             </Link>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={onImportDocx}>
+            <FileUp />
+            Import Word document…
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -330,7 +344,10 @@ function DocumentCard({
       </h3>
 
       <div className="mt-auto flex items-center justify-between text-xs text-muted-foreground">
-        <span>Edited {formatRelativeTime(document.updatedAt)}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate">Edited {formatRelativeTime(document.updatedAt)}</span>
+          {document.deadline !== undefined && <DeadlineChip deadline={document.deadline} />}
+        </span>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -359,6 +376,26 @@ function DocumentCard({
         </DropdownMenu>
       </div>
     </article>
+  );
+}
+
+/** "Due in 3 days" on a card: amber within three days, red once overdue. */
+function DeadlineChip({ deadline }: { deadline: number }) {
+  const now = Date.now();
+  const tone =
+    deadline < now
+      ? 'bg-destructive/10 text-destructive'
+      : deadline - now < 3 * 24 * 60 * 60 * 1000
+        ? 'bg-warning/12 text-warning'
+        : 'bg-muted text-muted-foreground';
+  return (
+    <span
+      className={`flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 font-medium ${tone}`}
+      title={new Date(deadline).toLocaleDateString(undefined, { dateStyle: 'full' })}
+    >
+      <CalendarClock className="size-3" aria-hidden="true" />
+      {deadlineLabel(deadline, now)}
+    </span>
   );
 }
 

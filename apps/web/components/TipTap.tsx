@@ -158,6 +158,8 @@ interface TipTapEditorProps {
   rail?: ReactNode;
   /** For people the document is shared with as viewer or commenter. */
   readOnly?: boolean;
+  /** The document's writing goals, shown at the top of the outline. */
+  goals?: { wordTarget?: number; deadline?: number };
 }
 
 /** How many times each source is cited, for the citation picker. */
@@ -189,6 +191,7 @@ export default function TipTapEditor({
   panel,
   rail,
   readOnly = false,
+  goals,
 }: TipTapEditorProps) {
   const [editMode, setIsEditable] = useState(true);
   // Read-only wins over the Editing/Reading switch; the server and the
@@ -975,6 +978,8 @@ export default function TipTapEditor({
                 citedCount={citedCount}
                 onJumpToSection={jumpTo}
                 onJumpToFloat={jumpToFloat}
+                wordTarget={goals?.wordTarget}
+                deadline={goals?.deadline}
               />
             </aside>
           </>

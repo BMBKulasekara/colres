@@ -27,4 +27,7 @@ crons.interval(
 // Notifications older than 90 days are deleted.
 crons.daily("prune old notifications", { hourUTC: 3, minuteUTC: 30 }, internal.notifications._pruneOld, {});
 
+// Everyone on a document is reminded 7, 3 and 1 days before its deadline.
+crons.daily("remind upcoming deadlines", { hourUTC: 8, minuteUTC: 0 }, internal.goals._remindDeadlines, {});
+
 export default crons;

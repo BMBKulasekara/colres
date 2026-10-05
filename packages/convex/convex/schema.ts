@@ -100,6 +100,18 @@ export default defineSchema({
     // snapshot is copied at creation time so an admin editing the template
     // later never changes the compilation contract of documents already based
     // on it.
+    // Writing goals, set by the authors (see goals.ts). All optional: a
+    // document without them shows only the template's section budgets.
+    /** Word target for the whole document. */
+    wordTarget: v.optional(v.number()),
+    /** Submission deadline, epoch milliseconds (the end of the chosen day). */
+    deadline: v.optional(v.number()),
+    /**
+     * Word targets for sections by heading title, overriding the template's
+     * for the same section and adding targets for sections it does not name.
+     */
+    sectionTargets: v.optional(v.array(v.object({ title: v.string(), words: v.number() }))),
+
     templateId: v.optional(v.id("templates")),
     templateVersion: v.optional(v.number()),
     templateSnapshot: v.optional(
@@ -120,6 +132,7 @@ export default defineSchema({
     .index("by_created", ["createdAt"])
     .index("by_updated", ["updatedAt"])
     .index("by_status_updated", ["status", "updatedAt"])
+    .index("by_deadline", ["deadline"])
     .searchIndex("search_title", {
       searchField: "title",
       filterFields: ["status", "orgId", "author", "templateId"],
@@ -602,7 +615,8 @@ export default defineSchema({
       v.literal("mention"),
       v.literal("chat_reply"),
       v.literal("comment_reply"),
-      v.literal("share")
+      v.literal("share"),
+      v.literal("deadline")
     ),
     documentId: v.id("documents"),
     actorName: v.string(),
@@ -611,6 +625,11 @@ export default defineSchema({
     preview: v.string(),
     createdAt: v.number(),
     readAt: v.optional(v.number()),
+    /**
+     * Unused. An earlier, uncommitted version of notifications wrote it to
+     * some dev rows, and Convex rejects a schema those rows would break.
+     */
+    seenAt: v.optional(v.number()),
   })
     .index("by_user_created", ["userId", "createdAt"])
     .index("by_user_read", ["userId", "readAt"])

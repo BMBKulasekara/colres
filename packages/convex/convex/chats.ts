@@ -257,7 +257,7 @@ export const deleteMessage = mutation({
  * is a single indexed read, and the scan would grow with the size of the whole
  * user table every time somebody opened the mention picker.
  */
-async function collaboratorIds(ctx: QueryCtx, document: Doc<'documents'>): Promise<string[]> {
+export async function collaboratorIds(ctx: QueryCtx, document: Doc<'documents'>): Promise<string[]> {
   const author = await ctx.db.get(document.author);
   const ids = author ? [author.clerkId] : [];
 

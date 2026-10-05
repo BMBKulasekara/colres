@@ -4,6 +4,7 @@ import {
   budgetTone,
   buildOutline,
   countWords,
+  mergeSectionTargets,
   normalizeTitle,
   runInSectionTitle,
   sectionAt,
@@ -133,4 +134,23 @@ test('sectionAt finds the section containing a position', () => {
   assert.equal(sectionAt(sections, 15), sections[1]);
   assert.equal(sectionAt(sections, 20), sections[2]);
   assert.equal(sectionAt([{ pos: 5 }], 2), null);
+});
+
+test('own section targets override the template and add new sections', () => {
+  const merged = mergeSectionTargets(
+    [
+      { key: 'intro', title: 'Introduction', required: true, targetWords: 500, maxWords: 600 },
+      { key: 'method', title: 'Methods', required: true, targetWords: 900 },
+    ],
+    [
+      { title: 'introduction', words: 800 },
+      { title: 'Discussion', words: 1200 },
+    ]
+  );
+  assert.deepEqual(merged, [
+    { key: 'intro', title: 'Introduction', required: true, targetWords: 800, maxWords: undefined },
+    { key: 'method', title: 'Methods', required: true, targetWords: 900 },
+    { key: 'goal:discussion', title: 'Discussion', required: false, targetWords: 1200 },
+  ]);
+  assert.deepEqual(mergeSectionTargets(undefined, undefined), []);
 });

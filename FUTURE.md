@@ -114,7 +114,7 @@ role, and cannot see anything else.
 | 5.2 | Written on chat mention, chat reply, comment reply, and share invite; never to the actor; hidden once access is lost | ✅ |
 | 5.3 | Bell with unread count in the app's top bar and the editor header | ✅ |
 | 5.4 | Optional email digest from a cron job, with an opt-out setting (needs an email service such as Resend) | ⬜ |
-| 5.5 | Push to Convex and try it with two accounts | ⬜ |
+| 5.5 | Push to Convex and try it with two accounts | 🚧 pushed to dev; not yet tried with two accounts |
 
 **Done when:** being mentioned or invited shows up in the bell without opening
 the document.
@@ -132,18 +132,20 @@ the document.
 **Done when:** a user can ask the assistant about the paper in chat and rewrite
 a selected paragraph, within a rate limit.
 
-### Phase 7: Smaller features ⬜
+### Phase 7: Smaller features 🚧
 
 Independent of each other; pick up between phases.
 
 | Step | Work | Status |
 |---|---|---|
-| 7.1 | Writing goals: word targets per document and section, a deadline, a progress bar | ⬜ |
+| 7.1 | Writing goals: own word target, section targets over the template's, deadline, progress bar in the outline, deadline chip on cards, reminders 7/3/1 days before (Goals panel) | ✅ |
 | 7.2 | `.bib` import into the references panel (Zotero, Mendeley, JabRef, Overleaf): keeps the file's keys, skips duplicates, reports unreadable entries | ✅ |
 | 7.3 | `.docx` export | ⬜ |
 | 7.4 | Save a document as a personal or organization template | ⬜ |
 | 7.5 | Track changes / suggestion mode (large; plan separately) | ⬜ |
 | 7.6 | Replace the starter README with real setup instructions | ⬜ |
+| 7.7 | `.docx` import: new document from a Word file (headings, lists, tables, bold/italic, links, images) | ✅ |
+| 7.8 | `.tex` import: new document from a LaTeX file (large; LaTeX is hard to read reliably) | ⬜ |
 
 ### Known issues found along the way
 
@@ -230,10 +232,11 @@ A chatbot inside the existing team chat, plus inline actions in the editor.
 Chat mentions and comments are stored, but nobody is told about them until they
 open the document.
 
-- Add a `notifications` table, written on mentions, comment replies and shares.
-- A bell icon with an unread count in the app shell.
-- Optional email digest sent by a cron job, following the same pattern as the
-  recycle-bin purge in `crons.ts`.
+- ✅ A `notifications` table, written on chat mentions, chat replies, comment
+  replies, share invites and deadline reminders (Phase 5, step 7.1).
+- ✅ A bell with an unread count in the top bar and the editor header.
+- ⬜ Optional email digest sent by a cron job. Needs an email service (such as
+  Resend) and an opt-out setting; nothing sends email yet.
 
 ## 6. Full-text search across documents
 
@@ -246,17 +249,18 @@ search box on the documents page that matches titles and body text.
 
 **Value:** medium · **Effort:** small
 
-- Word-count targets per document and per section.
-- A submission deadline with a progress bar.
-- A reminder to document members before the deadline.
-- Builds on the existing contribution stats.
+✅ Built in step 7.1: a Goals panel to set a word target for the document,
+targets per section (over the template's own budgets) and a deadline; a
+progress bar and deadline in the outline; a deadline chip on document cards;
+and bell reminders to everyone on the document 7, 3 and 1 days before.
 
 ## 8. Import references and documents
 
 **Value:** medium · **Effort:** small
 
 - ✅ DOI lookup, title search, PDF import and `.bib` import (step 7.2).
-- Import `.docx` or `.tex` to start a document from existing work.
+- ✅ Import `.docx` to start a document (step 7.7).
+- ⬜ Import `.tex` (step 7.8).
 
 ## 9. Smaller improvements
 

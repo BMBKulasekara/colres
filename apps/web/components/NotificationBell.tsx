@@ -11,7 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@repo/ui/components/ui/dropdown-menu';
 import { useMutation, useQuery } from 'convex/react';
-import { AtSign, Bell, MessageSquare, MessagesSquare, Share2 } from 'lucide-react';
+import { AtSign, Bell, CalendarClock, MessageSquare, MessagesSquare, Share2 } from 'lucide-react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { formatRelativeTime } from '../lib/relativeTime';
@@ -21,6 +21,7 @@ const KIND = {
   chat_reply: { icon: MessagesSquare, verb: 'replied to you in' },
   comment_reply: { icon: MessageSquare, verb: 'replied to a comment in' },
   share: { icon: Share2, verb: 'shared' },
+  deadline: { icon: CalendarClock, verb: 'reminds you about the deadline for' },
 } as const;
 
 /**
@@ -73,7 +74,7 @@ export function NotificationBell() {
         <div className="max-h-96 overflow-y-auto py-1">
           {notifications === undefined ? null : notifications.length === 0 ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">
-              Nothing yet. Mentions, replies and shares show up here.
+              Nothing yet. Mentions, replies, shares and deadline reminders show up here.
             </p>
           ) : (
             notifications.map((n) => {
@@ -112,7 +113,7 @@ export function NotificationBell() {
                     </span>
                     {n.preview && (
                       <span className="mt-0.5 line-clamp-2 block text-muted-foreground">
-                        {n.kind === 'share' ? n.preview : `“${n.preview}”`}
+                        {n.kind === 'share' || n.kind === 'deadline' ? n.preview : `“${n.preview}”`}
                       </span>
                     )}
                     <span className="mt-0.5 block text-[11px] text-muted-foreground">

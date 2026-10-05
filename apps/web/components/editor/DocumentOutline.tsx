@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertTriangle, Check } from 'lucide-react';
+import { deadlineLabel } from '@repo/convex/goals/policy';
+import { AlertTriangle, CalendarClock, Check } from 'lucide-react';
 import type { BudgetTone, Outline, OutlineSection } from '../../lib/documentOutline';
 
 const BAR_TONE: Record<BudgetTone, string> = {
@@ -21,6 +22,10 @@ interface DocumentOutlineProps {
   citedCount: number;
   onJumpToSection: (pos: number) => void;
   onJumpToFloat: (floatId: string) => void;
+  /** The authors' own word target for the whole document. */
+  wordTarget?: number;
+  /** Submission deadline, epoch milliseconds. */
+  deadline?: number;
 }
 
 /**
@@ -36,8 +41,12 @@ export function DocumentOutline({
   citedCount,
   onJumpToSection,
   onJumpToFloat,
+  wordTarget,
+  deadline,
 }: DocumentOutlineProps) {
-  const { sections, totalWords, totalTarget, missing } = outline;
+  const { sections, totalWords, missing } = outline;
+  // The authors' own target wins over the sum of the template's budgets.
+  const totalTarget = wordTarget ?? outline.totalTarget;
 
   return (
     <nav aria-label="Document outline" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -50,6 +59,10 @@ export function DocumentOutline({
           {totalTarget > 0 && ` / ${numberFormat.format(totalTarget)}`}
         </span>
       </div>
+
+      {(wordTarget !== undefined || deadline !== undefined) && (
+        <GoalSummary totalWords={totalWords} wordTarget={wordTarget} deadline={deadline} />
+      )}
 
       {sections.length === 0 ? (
         <p className="px-4 py-2 text-sm text-muted-foreground">
@@ -117,6 +130,59 @@ export function DocumentOutline({
         </div>
       )}
     </nav>
+  );
+}
+
+/** The document's own goal: progress towards its word target, and its deadline. */
+function GoalSummary({
+  totalWords,
+  wordTarget,
+  deadline,
+}: {
+  totalWords: number;
+  wordTarget?: number;
+  deadline?: number;
+}) {
+  const progress = wordTarget ? Math.min(1, totalWords / wordTarget) : 0;
+  const now = Date.now();
+  const overdue = deadline !== undefined && deadline < now;
+  const soon = deadline !== undefined && !overdue && deadline - now < 3 * 24 * 60 * 60 * 1000;
+
+  return (
+    <div className="mx-4 mb-3 flex flex-col gap-1.5 rounded-md bg-muted/60 px-3 py-2 text-xs">
+      {wordTarget !== undefined && (
+        <>
+          <span className="flex justify-between text-muted-foreground">
+            Word goal
+            <span className="font-medium tabular-nums text-foreground">
+              {Math.round(progress * 100)}%
+            </span>
+          </span>
+          <span
+            role="progressbar"
+            aria-label="Progress towards the word goal"
+            aria-valuemin={0}
+            aria-valuemax={wordTarget}
+            aria-valuenow={Math.min(totalWords, wordTarget)}
+            className="h-1.5 w-full overflow-hidden rounded-full bg-background"
+          >
+            <span
+              className={`block h-full rounded-full ${progress >= 1 ? 'bg-success' : 'bg-primary'}`}
+              style={{ width: `${progress * 100}%` }}
+            />
+          </span>
+        </>
+      )}
+      {deadline !== undefined && (
+        <span
+          className={`flex items-center gap-1.5 ${overdue ? 'font-medium text-destructive' : soon ? 'font-medium text-warning' : 'text-muted-foreground'}`}
+          title={new Date(deadline).toLocaleDateString(undefined, { dateStyle: 'full' })}
+        >
+          <CalendarClock className="size-3.5" aria-hidden="true" />
+          {deadlineLabel(deadline, now)}
+        </span>
+      )}
+    </div>
   );
 }
 
