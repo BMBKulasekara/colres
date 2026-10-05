@@ -24,6 +24,8 @@ export const links = {
   templates: '#templates',
   pricing: '#pricing',
   faq: '#faq',
+  about: '/about',
+  terms: '/terms',
 } as const;
 
 export const ctaLabels = {
@@ -42,6 +44,7 @@ export const mainNav: NavLink[] = [
   { label: 'Pricing', href: links.pricing },
   { label: 'FAQ', href: links.faq },
   { label: 'Docs', href: links.docs },
+  { label: 'About', href: links.about },
 ];
 
 export const footerNav: { title: string; links: NavLink[] }[] = [
@@ -63,6 +66,13 @@ export const footerNav: { title: string; links: NavLink[] }[] = [
     ],
   },
   {
+    title: 'Company',
+    links: [
+      { label: 'About', href: links.about },
+      { label: 'Terms & Conditions', href: links.terms },
+    ],
+  },
+  {
     title: 'Account',
     links: [
       { label: 'Sign in', href: links.signIn },
@@ -70,3 +80,17 @@ export const footerNav: { title: string; links: NavLink[] }[] = [
     ],
   },
 ];
+
+/**
+ * In-page anchors like `#pricing` only resolve on the home page. Sub-pages use
+ * these copies, which point back at the home page's sections instead.
+ */
+const fromSubPage = (link: NavLink): NavLink =>
+  link.href.startsWith('#') ? { ...link, href: `/${link.href}` } : link;
+
+export const subPageNav: NavLink[] = mainNav.map(fromSubPage);
+
+export const subPageFooterNav: typeof footerNav = footerNav.map((group) => ({
+  ...group,
+  links: group.links.map(fromSubPage),
+}));
